@@ -8,7 +8,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // MongoDB local hoặc Atlas
-mongoose.connect("mongodb://127.0.0.1:27017/classroom");
+//mongoose.connect("mongodb://127.0.0.1:27017/classroom");
+
+mongoose.connect("mongodb+srv://hoangthai2301_db_user:hoangthai2301@cluster0.ez8eahu.mongodb.net/users",
+  { useNewUrlParser: true, useUnifiedTopology: true });
 
 app.use("/api/auth", require("./src/routes/auth"));
 app.use("/api/courses", require("./src/routes/course"));
