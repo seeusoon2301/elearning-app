@@ -36,6 +36,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
   shared_preferences: ^2.5.3
+  provider: ^6.1.2                    # Quản lý role admin/student + state
+  fl_chart: ^0.68.0                    # Biểu đồ tiến độ dashboard giảng viên
+  file_picker: ^8.1.2                  # Chọn file CSV import
+  csv: ^6.0.0                          # Xử lý CSV preview + skip duplicate (phần tím)
+  path_provider: ^2.1.4                # Dùng chung với file_picker
+  intl: ^0.19.0                        # Format ngày giờ đẹp (15/11/2025)
+  flutter_local_notifications: ^17.2.2 # Thông báo trong app (deadline, nộp bài…)
 
 dev_dependencies:
   flutter_test:
@@ -47,6 +54,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.6                # Nếu sau này dùng Hive offline (bonus)
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
