@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class RoleProvider extends ChangeNotifier {
   String? role; // "instructor" hoặc "student"
 
-  void setRole(String newRole) {
+  void setRole(String? newRole) {
     role = newRole;
     notifyListeners();
   }
