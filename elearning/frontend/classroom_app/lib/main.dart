@@ -5,19 +5,23 @@ import 'signin.dart';
 import 'role_provider.dart';
 import 'theme_provider.dart';
 import 'instructor_dashboard.dart';
-
-void main() {
-  runApp(const MyApp());
+import 'package:shared_preferences/shared_preferences.dart';
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  final String? initialRole = prefs.getString('role');
+  runApp(MyApp(initialRole: initialRole));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final String? initialRole;
+  const MyApp({super.key, this.initialRole});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => RoleProvider()),
+        ChangeNotifierProvider(create: (_) => RoleProvider(role: initialRole)),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
       child: Consumer<ThemeProvider>(

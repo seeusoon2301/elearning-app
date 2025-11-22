@@ -3,16 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../signin.dart';
-import 'role_provider.dart'; // Đảm bảo đúng đường dẫn
+import 'role_provider.dart';
+import 'services/api_service.dart';   // <<< THÊM DÒNG NÀY
 
 class InstructorDrawer extends StatelessWidget {
   const InstructorDrawer({super.key});
 
   Future<void> _logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Xóa hết dữ liệu
+    await prefs.clear();
 
-    // ĐẶT ROLE VỀ null → ĐÃ SỬA, KHÔNG CÒN LỖI
     Provider.of<RoleProvider>(context, listen: false).setRole(null);
 
     if (context.mounted) {
@@ -42,6 +42,7 @@ class InstructorDrawer extends StatelessWidget {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
+            // HEADER
             Container(
               height: 160,
               decoration: BoxDecoration(
@@ -70,16 +71,62 @@ class InstructorDrawer extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Text(
                 "Đang giảng dạy",
-                style: TextStyle(color: isDark ? Colors.white70 : Colors.purple[700], fontWeight: FontWeight.bold),
+                style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.purple[700],
+                    fontWeight: FontWeight.bold),
               ),
             ),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFF9D50BB),
-                child: Text("H", style: TextStyle(color: Colors.white)),
-              ),
-              title: const Text("Học Tập Để Thành Công", style: TextStyle(fontWeight: FontWeight.w600)),
-              onTap: () {},
+
+            // 🟣🟣 FUTURE BUILDER LẤY DỮ LIỆU TỪ API 🟣🟣
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: ApiService.fetchAllClasses(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      "Lỗi khi tải lớp học",
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  );
+                }
+
+                final classes = snapshot.data ?? [];
+
+                if (classes.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text("Không có lớp nào."),
+                  );
+                }
+
+                return Column(
+                  children: classes.map((cls) {
+                    return ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0xFF9D50BB),
+                        child: Icon(Icons.class_, color: Colors.white),
+                      ),
+                      title: Text(
+                        cls["name"] ?? "Không tên",
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        "Phòng: ${cls["room"] ?? "N/A"}",
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () {},
+                    );
+                  }).toList(),
+                );
+              },
             ),
 
             const Divider(height: 40),
@@ -87,7 +134,6 @@ class InstructorDrawer extends StatelessWidget {
             _buildItem(context, Icons.settings, "Cài đặt"),
             _buildItem(context, Icons.help_outline, "Trợ giúp"),
 
-            // NÚT ĐĂNG XUẤT – ĐẸP, AN TOÀN, KHÔNG LỖI
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.redAccent),
               title: const Text(
@@ -105,7 +151,8 @@ class InstructorDrawer extends StatelessWidget {
   Widget _buildItem(BuildContext context, IconData icon, String title, {bool selected = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
-      leading: Icon(icon, color: selected ? const Color(0xFFE0AAFF) : (isDark ? Colors.white70 : Colors.purple[700])),
+      leading:
+          Icon(icon, color: selected ? const Color(0xFFE0AAFF) : (isDark ? Colors.white70 : Colors.purple[700])),
       title: Text(
         title,
         style: TextStyle(

@@ -1,8 +1,11 @@
 // lib/screens/create_class_screen.dart
 import 'package:flutter/material.dart';
+import '../services/api_service.dart'; // ⭐️ Import ApiService
+import 'dart:async'; // Cần thiết cho Future và async/await
 
 class CreateClassScreen extends StatefulWidget {
-  final Function(Map<String, String>) onClassCreated;
+  // ⭐️ Thay đổi kiểu dữ liệu callback để nhận dữ liệu lớp học hoàn chỉnh từ server
+  final Function(Map<String, dynamic>) onClassCreated; 
   const CreateClassScreen({super.key, required this.onClassCreated});
 
   @override
@@ -15,6 +18,7 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
   final _sectionCtrl = TextEditingController();
   final _roomCtrl = TextEditingController();
   final _subjectCtrl = TextEditingController();
+  bool _isLoading = false; // ⭐️ Biến trạng thái loading
 
   @override
   void dispose() {
@@ -24,6 +28,56 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
     _subjectCtrl.dispose();
     super.dispose();
   }
+
+  // ⭐️ HÀM XỬ LÝ GỌI API TẠO LỚP HỌC MỚI
+  Future<void> _handleCreateClass() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    // Bắt đầu loading
+    setState(() => _isLoading = true);
+
+    final classDataToSend = {
+      'name': _nameCtrl.text.trim(),
+      'section': _sectionCtrl.text.trim(),
+      'room': _roomCtrl.text.trim(),
+      'subject': _subjectCtrl.text.trim(),
+    };
+
+    try {
+      // 1. GỌI API ĐỂ TẠO LỚP HỌC
+      final createdClass = await ApiService.createClass(classDataToSend); 
+
+      // 2. NẾU THÀNH CÔNG: Gọi callback để cập nhật danh sách ở Dashboard
+      widget.onClassCreated(createdClass); 
+
+      // 3. Hiển thị thông báo thành công và đóng màn hình
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Tạo lớp học thành công!"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+
+    } catch (e) {
+      // 4. Xử lý lỗi và hiển thị SnackBar
+      if (mounted) {
+        final errorMessage = e.toString().replaceFirst("Exception: ", ""); 
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Lỗi tạo lớp học: $errorMessage"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      // Kết thúc loading
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -42,23 +96,20 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  widget.onClassCreated({
-                    'name': _nameCtrl.text.trim(),
-                    'section': _sectionCtrl.text.trim(),
-                    'room': _roomCtrl.text.trim(),
-                    'subject': _subjectCtrl.text.trim(),
-                  });
-                  Navigator.pop(context);
-                }
-              },
+              // ⭐️ SỬ DỤNG HÀM XỬ LÝ MỚI và vô hiệu hóa khi đang loading
+              onPressed: _isLoading ? null : _handleCreateClass, 
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6E48AA),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
               ),
-              child: const Text("Tạo", style: TextStyle(fontWeight: FontWeight.bold)),
+              child: _isLoading
+                ? const SizedBox(
+                    width: 20, 
+                    height: 20, 
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
+                  )
+                : const Text("Tạo", style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -69,6 +120,9 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
           key: _formKey,
           child: Column(
             children: [
+              // -------------------------------------------------------------
+              // TextFormField: Tên lớp
+              // -------------------------------------------------------------
               TextFormField(
                 controller: _nameCtrl,
                 autofocus: true,
@@ -90,6 +144,9 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
                 validator: (value) => value!.trim().isEmpty ? "Vui lòng nhập tên lớp" : null,
               ),
               const SizedBox(height: 20),
+              // -------------------------------------------------------------
+              // TextFormField: Phần (Section)
+              // -------------------------------------------------------------
               TextFormField(
                 controller: _sectionCtrl,
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
@@ -109,6 +166,9 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+              // -------------------------------------------------------------
+              // TextFormField: Phòng (Room)
+              // -------------------------------------------------------------
               TextFormField(
                 controller: _roomCtrl,
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
@@ -128,6 +188,9 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+              // -------------------------------------------------------------
+              // TextFormField: Chủ đề (Subject)
+              // -------------------------------------------------------------
               TextFormField(
                 controller: _subjectCtrl,
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),

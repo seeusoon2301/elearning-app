@@ -1,15 +1,14 @@
 // config/db.js
 const mongoose = require('mongoose');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://hoangthai2301_db_user:hoangthai2301@cluster0.ez8eahu.mongodb.net/elearning';
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(process.env.MONGO_URI);
+        console.log(`MongoDB Connected: ${conn.connection.host}`);
+    } catch (error) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1); // Thoát khỏi ứng dụng nếu kết nối thất bại
+    }
+}
 
-module.exports = function connectDB() {
-  mongoose.connect(MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  }).then(() => console.log('MongoDB connected'))
-    .catch(err => {
-      console.error('MongoDB connection error', err.message);
-      process.exit(1);
-    });
-};
+module.exports = connectDB;

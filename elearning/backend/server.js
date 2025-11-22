@@ -1,23 +1,29 @@
 // server.js
 const express = require('express');
-const cors = require('cors');
+const dotenv = require('dotenv');
 const connectDB = require('./config/db');
+const classRoutes = require('./routes/classRoutes');
+const authRoutes = require('./routes/authRoutes');
+const cors = require('cors');
+// Tải biến môi trường từ file .env
+dotenv.config();
+
+// Kết nối Database
+connectDB();
 
 const app = express();
 app.use(cors());
+// Middleware: Cho phép Express đọc JSON body
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Connect DB
-connectDB();
+app.use('/api/auth', authRoutes);
+// Định nghĩa Routes
+app.use('/api/admin/classes', classRoutes);
 
-// Routes
-app.use('/api/admin/auth', require('./routes/admin/adminAuthRoutes'));
-app.use('/api/admin/students', require('./routes/admin/adminStudentRoutes'));
-app.use('/api/admin/courses', require('./routes/admin/adminCourseRoutes'));
+// Khởi động server
+const PORT = process.env.PORT || 5000;
 
-// Health
-app.get('/', (req, res) => res.send('Backend running'));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`Test API endpoint: \n  Login Admin POST: http://localhost:5000/api/auth/login\n  Create Class POST http://localhost:${PORT}/api/admin/classes/create\n  Show all class GET http://localhost:5000/api/admin/classes\n  Delete 1 Class http://localhost:5000/api/admin/classes/delete/:id`);
+});

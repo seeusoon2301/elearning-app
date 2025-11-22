@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'screens/create_class_screen.dart';
 import 'instructor_drawer.dart';
+import 'services/api_service.dart'; // ⭐️ Import ApiService
+
 class InstructorDashboard extends StatefulWidget {
   const InstructorDashboard({super.key});
 
@@ -14,15 +16,19 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
   late AnimationController _waveController;
   late Animation<double> _waveAnimation;
 
-  List<Map<String, String>> classes = [
-    {'name': 'Học Tập Để Thành Công', 'section': '', 'room': '', 'subject': ''},
-  ];
+  // ⭐️ Danh sách lớp học từ API. Dùng Map<String, dynamic> để linh hoạt với dữ liệu server (có _id, createdAt...)
+  List<Map<String, dynamic>> classes = []; 
+  bool _isLoading = true; // ⭐️ Trạng thái tải dữ liệu ban đầu
+  String? _error; // ⭐️ Biến lưu lỗi nếu có
 
   @override
   void initState() {
     super.initState();
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
+    
+    // ⭐️ GỌI API KHI KHỞI TẠO MÀN HÌNH
+    _loadClasses(); 
   }
 
   @override
@@ -31,24 +37,172 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
     super.dispose();
   }
 
-  void _addNewClass(Map<String, String> newClass) {
+  // ⭐️ HÀM MỚI: TẢI DANH SÁCH LỚP HỌC TỪ API
+  Future<void> _loadClasses() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final fetchedClasses = await ApiService.fetchAllClasses();
+      if (mounted) {
+        setState(() {
+          // Ép kiểu List<Map<String, dynamic>>
+          classes = fetchedClasses;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst("Exception: ", "Lỗi: ");
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // ⭐️ HÀM MỚI: XÓA LỚP HỌC QUA API
+  Future<void> _deleteClass(String classId, String className) async {
+    // Đóng dialog xác nhận ngay lập tức
+    Navigator.of(context).pop(); 
+
+    // Hiển thị thông báo đang xử lý
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Đang xóa lớp '$className'...", style: const TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF6E48AA),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+
+    try {
+      await ApiService.deleteClass(classId);
+
+      // Xóa thành công, cập nhật UI:
+      if (mounted) {
+        setState(() {
+          // Tìm và xóa lớp học theo ID từ danh sách cục bộ
+          classes.removeWhere((cls) => cls['_id'] == classId);
+        });
+        // Hiển thị thông báo thành công
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Đã xóa lớp '$className' thành công!", style: const TextStyle(color: Colors.white)),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      // Xử lý lỗi và hiển thị thông báo lỗi
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst("Exception: ", "Lỗi xóa lớp: ")),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+
+  // ⭐️ SỬA LỖI: Cập nhật lớp học mới được tạo. Dữ liệu này là Map<String, dynamic> từ API
+  void _addNewClass(Map<String, dynamic> newClass) { 
     setState(() {
       classes.add(newClass);
     });
   }
 
+  // ⭐️ HÀM HỖ TRỢ HIỂN THỊ DỮ LIỆU/LOADING/LỖI
+  Widget _buildBodyContent() {
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF6E48AA)),
+            SizedBox(height: 20),
+            Text("Đang tải danh sách lớp học...", style: TextStyle(fontSize: 16, color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 50),
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _loadClasses,
+              icon: const Icon(Icons.refresh),
+              label: const Text("Thử lại"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6E48AA),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (classes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.school_outlined, color: Colors.grey.withOpacity(0.5), size: 80),
+            const SizedBox(height: 20),
+            const Text(
+              "Bạn chưa tạo lớp học nào.", 
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "Nhấn nút '+' để bắt đầu tạo lớp mới.", 
+              style: TextStyle(fontSize: 16, color: Colors.grey.withOpacity(0.8)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // HIỂN THỊ DANH SÁCH LỚP HỌC
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: classes.length,
+      itemBuilder: (context, index) {
+        // Ép kiểu lớp học về Map<String, String> để sử dụng _buildClassCard cũ
+        final cls = classes[index].map((key, value) => MapEntry(key, value.toString())); 
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: _buildClassCard(cls, index),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // ... (Code AppBar và Drawer giữ nguyên)
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-
-      // HEADER ĐÃ ĐƯỢC NÂNG CẤP SIÊU ĐẸP, SIÊU NỔI, SIÊU CHUẨN TDTU
+      
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        toolbarHeight: 90, // Tăng chiều cao cho sang trọng
+        toolbarHeight: 90, 
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -78,7 +232,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
           builder: (context) => Padding(
             padding: const EdgeInsets.only(left: 12),
             child: IconButton(
-              icon: Icon(
+              icon: const Icon(
                 Icons.menu_rounded,
                 color: Colors.white,
                 size: 32,
@@ -146,10 +300,10 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                   child: CircleAvatar(
                     radius: 24,
                     backgroundColor: Colors.white,
-                    child: CircleAvatar(
+                    child: const CircleAvatar(
                       radius: 22,
-                      backgroundColor: const Color(0xFF6E48AA),
-                      child: const Text(
+                      backgroundColor: Color(0xFF6E48AA),
+                      child: Text(
                         "GV",
                         style: TextStyle(
                           color: Colors.white,
@@ -177,6 +331,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
 
       drawer: const InstructorDrawer(),
 
+      // ⭐️ BODY ĐÃ ĐƯỢC CẬP NHẬT ĐỂ HIỂN THỊ LOADING/ERROR/CONTENT
       body: Stack(
         children: [
           // Nền Nebula Wave
@@ -190,28 +345,9 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
 
           // Danh sách lớp học
           SafeArea(
-            child: Column(
-              children: [
-                // HEADER ĐÃ NÂNG CẤP SIÊU ĐẸP (bạn đã có rồi, giữ nguyên)
-                // ... (phần header tím của bạn)
-
-                const SizedBox(height: 20),
-
-                // DANH SÁCH LỚP HỌC – ĐÃ SỬA HOÀN TOÀN, KHÔNG LỖI, CÓ INDEX
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: classes.length,
-                    itemBuilder: (context, index) {
-                      final cls = classes[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: _buildClassCard(cls, index), // ĐÃ TRUYỀN INDEX → KHÔNG LỖI
-                      );
-                    },
-                  ),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.only(top: 80), // Để tránh bị che bởi AppBar
+              child: _buildBodyContent(), // ⭐️ Sử dụng hàm kiểm tra trạng thái
             ),
           ),
         ],
@@ -222,6 +358,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
         elevation: 15,
         child: const Icon(Icons.add, color: Colors.white, size: 32),
         onPressed: () {
+          // ⭐️ TRUYỀN HÀM CALLBACK ĐÃ SỬA LỖI
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => CreateClassScreen(onClassCreated: _addNewClass)),
@@ -231,14 +368,16 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
     );
   }
 
-  // _buildClassCard và _NebulaWavePainter giữ nguyên như cũ
+  // ⭐️ _buildClassCard phải nhận Map<String, String> vì đó là kiểu dữ liệu bạn đang sử dụng trong hàm này
   Widget _buildClassCard(Map<String, String> cls, int index) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final List<String> backgrounds = [
+      // ... (Giữ nguyên danh sách ảnh nền)
       'assets/images/banner1.jpg',
       'assets/images/banner2.jpg',
       'assets/images/banner3.jpg',
     ];
+    // Chú ý: Bạn cần đảm bảo các file ảnh này tồn tại trong thư mục assets và đã khai báo trong pubspec.yaml
     final String bgImage = backgrounds[index % backgrounds.length];
 
     return Card(
@@ -247,8 +386,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: Container(
-          height: 200,
+        child: SizedBox(
+          height: 250,
           child: Stack(
             children: [
               // Ảnh nền
@@ -303,7 +442,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                     Align(
                       alignment: Alignment.bottomRight,
                       child: PopupMenuButton<String>(
-                        color: isDark ? Colors.grey[900]! : Colors.white, // ĐỒNG BỘ DARK/LIGHT
+                        color: isDark ? Colors.grey[900]! : Colors.white, 
                         surfaceTintColor: Colors.transparent,
                         shadowColor: Colors.black.withOpacity(0.3),
                         elevation: 12,
@@ -358,18 +497,23 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                                       foregroundColor: Colors.white,
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
+                                    // ⭐️ GỌI HÀM XÓA QUA API THỰC TẾ
                                     onPressed: () {
-                                      setState(() {
-                                        classes.removeAt(index);
-                                      });
-                                      Navigator.pop(ctx);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text("Đã xóa lớp học thành công!"),
-                                          backgroundColor: Colors.green,
-                                          duration: Duration(seconds: 2),
-                                        ),
-                                      );
+                                      final String idToDelete = cls['_id'] ?? '';
+                                      final String nameToDelete = cls['name'] ?? 'Lớp học không tên';
+                                      
+                                      if (idToDelete.isNotEmpty) {
+                                        _deleteClass(idToDelete, nameToDelete); // Gọi hàm xóa API
+                                      } else {
+                                        Navigator.pop(ctx);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text("Lỗi: Không tìm thấy ID lớp học."),
+                                            backgroundColor: Colors.orange,
+                                            duration: Duration(seconds: 3),
+                                          ),
+                                        );
+                                      }
                                     },
                                     child: const Text("Xóa", style: TextStyle(fontWeight: FontWeight.bold)),
                                   ),
@@ -408,7 +552,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
     );
   }
 
-  // Widget hỗ trợ hiển thị thông tin lớp
+  // Widget hỗ trợ hiển thị thông tin lớp (Giữ nguyên)
   Widget _infoRow(IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),

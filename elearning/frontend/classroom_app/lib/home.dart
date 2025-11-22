@@ -1,29 +1,73 @@
 // lib/home.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Thêm import này
 import 'role_provider.dart';
 import 'signin.dart';
 import 'instructor_dashboard.dart';
-import 'home_page.dart'; // ← Đây là file HomePage sinh viên của bạn hiện tại
+import 'home_page.dart';
 
-class Home extends StatelessWidget {
+class Home extends StatefulWidget {
   const Home({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Lấy role từ Provider
-    final role = Provider.of<RoleProvider>(context).role;
+  State<Home> createState() => _HomeState();
+}
 
-    // DỰA VÀO ROLE ĐỂ TRẢ VỀ TRANG ĐÚNG – ĐÚNG 100% ĐỀ THẦY MAI VĂN MẠNH
-    if (role == "instructor") {
-      return const InstructorDashboard();
-    } 
-    else if (role == "student") {
-      return const HomePage(); // ← Trang sinh viên bạn đã làm sẵn
-    } 
-    else {
-      // role == null → chưa đăng nhập → về SignIn
-      return const SignIn();
+class _HomeState extends State<Home> {
+  // Hàm này sẽ đọc dữ liệu role đã lưu từ SharedPreferences
+  Future<String?> _loadSavedRole() async {
+    // 1. Lấy SharedPreferences Instance
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 2. Lấy role đã lưu
+    final savedRole = prefs.getString("role"); 
+
+    // 3. Nếu có role đã lưu, cập nhật RoleProvider
+    if (savedRole != null) {
+      // Đảm bảo cập nhật provider mà không cần rebuild (listen: false)
+      // Điều này rất quan trọng để Home có thể build đúng widget sau khi FutureBuilder hoàn tất
+      Provider.of<RoleProvider>(context, listen: false).setRole(savedRole);
     }
+    
+    // Trả về role (có thể là null nếu chưa login bao giờ)
+    return savedRole;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ⭐️ Bọc toàn bộ widget trong FutureBuilder
+    // Điều này giúp chúng ta đợi _loadSavedRole() hoàn tất.
+    return FutureBuilder<String?>(
+      future: _loadSavedRole(), // Gọi hàm tải dữ liệu đã lưu
+      builder: (context, snapshot) {
+        
+        // 1. Đang tải (Hiển thị màn hình chờ)
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF6E48AA),
+              ),
+            ),
+          );
+        }
+
+        // 2. Tải xong (Kiểm tra và hiển thị trang đúng)
+        // Dùng Provider.of LẦN NỮA để đảm bảo lấy giá trị role MỚI NHẤT
+        final currentRole = Provider.of<RoleProvider>(context).role;
+
+        if (currentRole == "instructor") {
+          return const InstructorDashboard();
+        } 
+        else if (currentRole == "student") {
+          return const HomePage();
+        } 
+        else {
+          // role == null hoặc không phải student/instructor → về SignIn
+          return const SignIn();
+        }
+      },
+    );
   }
 }

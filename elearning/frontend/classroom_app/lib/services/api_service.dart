@@ -3,15 +3,36 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const baseUrl = "http://localhost:3000/api";
+  // Đảm bảo baseUrl đúng cho môi trường của bạn (ví dụ: http://10.0.2.2:3000/api)
+  static const baseUrl = "http://localhost:5000/api"; 
+
+  // =====================================================================
+  // HÀM AUTHENTICATION (Giữ nguyên)
+  // =====================================================================
 
   static Future<Map<String, dynamic>> login(String email, String pass) async {
     final url = Uri.parse("$baseUrl/auth/login");
-    final res = await http.post(url, body: {
+    
+    // ⭐️ BƯỚC 1: Tạo payload (Map)
+    final payload = {
       "email": email,
       "password": pass,
-    });
+    };
+    
+    // ⭐️ BƯỚC 2 & 3: Thêm Header và JSON Encode Body
+    final res = await http.post(
+      url, 
+      headers: {
+        'Content-Type': 'application/json', // 👈 BẮT BUỘC
+      },
+      body: json.encode(payload), // 👈 BẮT BUỘC
+    );
 
+    // Nếu response rỗng, bạn nên kiểm tra xem server có gửi gì không
+    if (res.body.isEmpty) {
+        throw Exception("Server không phản hồi. Vui lòng kiểm tra kết nối.");
+    }
+    
     final data = jsonDecode(res.body);
 
     if (res.statusCode == 200) {
@@ -19,12 +40,14 @@ class ApiService {
       await prefs.setString("token", data["token"]);
       return data;
     } else {
-      throw data["error"];
+      // Khi server trả về 401 hoặc 400, nó sẽ có error (từ backend của bạn)
+      throw data["error"] ?? "Lỗi đăng nhập không xác định.";
     }
   }
 
   static Future<Map<String, dynamic>> register(
       String name, String email, String pass) async {
+    // ... (code register giữ nguyên)
     final url = Uri.parse("$baseUrl/auth/register");
     final res = await http.post(url, body: {
       "name": name,
@@ -41,6 +64,7 @@ class ApiService {
   }
 
   static Future<List> getStudentCourses(String email) async {
+    // ... (code getStudentCourses giữ nguyên)
     final url = Uri.parse("$baseUrl/courses/student/$email");
     final res = await http.get(url);
     if (res.statusCode == 200) {
@@ -48,5 +72,104 @@ class ApiService {
     } else {
       throw Exception("Failed to fetch courses");
     }
+  }
+
+  // =====================================================================
+  // ⭐️ HÀM MỚI: TẠO LỚP HỌC (POST /api/classes/create)
+  // =====================================================================
+  static Future<Map<String, dynamic>> createClass(Map<String, String> classData) async {
+    final url = Uri.parse("$baseUrl/admin/classes/create");
+    
+    final token = await _getToken(); // Lấy token để xác thực (giả định)
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token', // ⭐️ Thêm token nếu backend cần
+      },
+      body: json.encode(classData), 
+    );
+
+    final responseBody = json.decode(response.body);
+
+    if (response.statusCode == 201) {
+      // Trả về đối tượng lớp học đã tạo
+      return responseBody['class']; 
+    } else {
+      final errorMessage = responseBody['message'] ?? 'Lỗi không xác định khi tạo lớp.';
+      throw Exception(errorMessage);
+    }
+  }
+
+  // =====================================================================
+  // ⭐️ HÀM MỚI: LẤY TẤT CẢ LỚP HỌC (GET /api/classes)
+  // =====================================================================
+  static Future<List<Map<String, dynamic>>> fetchAllClasses() async {
+    final url = Uri.parse("$baseUrl/admin/classes"); 
+    
+    // Nếu bạn cần token để lấy dữ liệu này, hãy uncomment dòng dưới
+    // final token = await _getToken();
+    
+    try {
+      final response = await http.get(
+        url,
+        // headers: {'Authorization': 'Bearer $token'}, // Chỉ cần nếu route là Private
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = json.decode(response.body);
+        
+        // Backend trả về: { success: true, count: X, data: [...] }
+        if (responseBody['success'] == true && responseBody['data'] is List) {
+          return (responseBody['data'] as List)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } else {
+          throw Exception('Cấu trúc phản hồi không hợp lệ.');
+        }
+      } else {
+        throw Exception('Thất bại khi tải lớp học. Mã lỗi: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Lỗi kết nối hoặc xử lý dữ liệu: $e');
+    }
+  }
+  
+  // =====================================================================
+  // ⭐️ HÀM XÓA LỚP HỌC MỚI (DELETE /api/admin/classes/:id)
+  // =====================================================================
+  static Future<void> deleteClass(String classId) async {
+    // Endpoint: DELETE /api/admin/classes/:id
+    final url = Uri.parse("$baseUrl/admin/classes/delete/$classId"); 
+    final token = await _getToken();
+
+    final response = await http.delete(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token', // Gửi token để xác thực
+      },
+    );
+    
+    // Server trả về 200 OK nếu xóa thành công
+    if (response.statusCode == 200) {
+      // Xóa thành công
+      return; 
+    } else if (response.statusCode == 404) {
+      // Lớp học không tìm thấy
+      throw Exception("Không tìm thấy lớp học để xóa.");
+    } else {
+      // Các lỗi khác (401 Unauthorized, 500 Internal Server Error)
+      final responseBody = json.decode(response.body);
+      final errorMessage = responseBody['message'] ?? 'Lỗi không xác định khi xóa lớp.';
+      throw Exception(errorMessage);
+    }
+  }
+  // =====================================================================
+  // HÀM HỖ TRỢ LẤY TOKEN
+  // =====================================================================
+  static Future<String?> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString("token");
   }
 }
