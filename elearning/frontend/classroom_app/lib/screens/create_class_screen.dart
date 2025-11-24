@@ -109,7 +109,7 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
                     height: 20, 
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
                   )
-                : const Text("Tạo", style: TextStyle(fontWeight: FontWeight.bold)),
+                : const Text("Tạo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white )),
             ),
           ),
         ],

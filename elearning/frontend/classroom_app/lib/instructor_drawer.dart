@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../signin.dart';
 import 'role_provider.dart';
 import 'services/api_service.dart';   // <<< THÊM DÒNG NÀY
+import 'instructor_dashboard.dart';
 
 class InstructorDrawer extends StatelessWidget {
   const InstructorDrawer({super.key});
@@ -61,7 +62,22 @@ class InstructorDrawer extends StatelessWidget {
               ),
             ),
 
-            _buildItem(context, Icons.home, "Lớp học", selected: true),
+            _buildItem(
+              context,
+              Icons.home,
+              "Trang chủ",
+              selected: true,
+              onTap: () {
+                Navigator.pop(context);
+                // Chỉ chuyển trang nếu chưa đang ở Dashboard
+                if (!Navigator.canPop(context) || ModalRoute.of(context)?.settings.name != '/dashboard') {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const InstructorDashboard()),
+                  );
+                }
+              },
+            ),
             _buildItem(context, Icons.calendar_today, "Lịch"),
             _buildItem(context, Icons.notifications, "Thông báo"),
 
@@ -148,11 +164,13 @@ class InstructorDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildItem(BuildContext context, IconData icon, String title, {bool selected = false}) {
+  Widget _buildItem(BuildContext context, IconData icon, String title, {bool selected = false, VoidCallback? onTap}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
-      leading:
-          Icon(icon, color: selected ? const Color(0xFFE0AAFF) : (isDark ? Colors.white70 : Colors.purple[700])),
+      leading: Icon(
+        icon, 
+        color: selected ? const Color(0xFFE0AAFF) : (isDark ? Colors.white70 : Colors.purple[700])
+      ),
       title: Text(
         title,
         style: TextStyle(
@@ -163,7 +181,7 @@ class InstructorDrawer extends StatelessWidget {
       selected: selected,
       selectedTileColor: const Color(0xFF9D50BB).withOpacity(0.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      onTap: () => Navigator.pop(context),
+      onTap: onTap ?? () => Navigator.pop(context), // Nếu không truyền onTap → đóng drawer như cũ
     );
   }
 }

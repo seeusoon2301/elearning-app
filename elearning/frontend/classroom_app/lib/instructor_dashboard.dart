@@ -1,9 +1,13 @@
 // lib/instructor_dashboard.dart
+// HEADER GIỐNG HỆT 100% class_list_screen.dart – TỪNG PIXEL, TỪNG DÒNG CODE!
+// GIỮ NGUYÊN 6 Ô + BIỂU ĐỒ BẠN ĐANG THÍCH
+
 import 'dart:math';
+import 'package:classroom_app/providers/semester_provider.dart';
 import 'package:flutter/material.dart';
-import 'screens/create_class_screen.dart';
+import 'package:provider/provider.dart';
+import './screens/class_list_screen.dart';        // Đường dẫn đúng của bạn
 import 'instructor_drawer.dart';
-import 'services/api_service.dart'; // ⭐️ Import ApiService
 
 class InstructorDashboard extends StatefulWidget {
   const InstructorDashboard({super.key});
@@ -16,19 +20,11 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
   late AnimationController _waveController;
   late Animation<double> _waveAnimation;
 
-  // ⭐️ Danh sách lớp học từ API. Dùng Map<String, dynamic> để linh hoạt với dữ liệu server (có _id, createdAt...)
-  List<Map<String, dynamic>> classes = []; 
-  bool _isLoading = true; // ⭐️ Trạng thái tải dữ liệu ban đầu
-  String? _error; // ⭐️ Biến lưu lỗi nếu có
-
   @override
   void initState() {
     super.initState();
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
-    
-    // ⭐️ GỌI API KHI KHỞI TẠO MÀN HÌNH
-    _loadClasses(); 
   }
 
   @override
@@ -37,172 +33,127 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
     super.dispose();
   }
 
-  // ⭐️ HÀM MỚI: TẢI DANH SÁCH LỚP HỌC TỪ API
-  Future<void> _loadClasses() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  void _showSemesterPicker(BuildContext context) {
+    final provider = Provider.of<SemesterProvider>(context, listen: false);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    try {
-      final fetchedClasses = await ApiService.fetchAllClasses();
-      if (mounted) {
-        setState(() {
-          // Ép kiểu List<Map<String, dynamic>>
-          classes = fetchedClasses;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString().replaceFirst("Exception: ", "Lỗi: ");
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  // ⭐️ HÀM MỚI: XÓA LỚP HỌC QUA API
-  Future<void> _deleteClass(String classId, String className) async {
-    // Đóng dialog xác nhận ngay lập tức
-    Navigator.of(context).pop(); 
-
-    // Hiển thị thông báo đang xử lý
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Đang xóa lớp '$className'...", style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF6E48AA),
-        duration: const Duration(seconds: 5),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Chọn học kỳ", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...provider.list.map((semester) => ListTile(
+                    leading: Icon(
+                      semester.id == provider.current?.id ? Icons.check_circle : Icons.radio_button_unchecked,
+                      color: const Color(0xFF6E48AA),
+                    ),
+                    title: Text(semester.name),
+                    selected: semester.id == provider.current?.id,
+                    onTap: () {
+                      provider.select(semester);
+                      Navigator.pop(ctx);
+                      setState(() {}); // Cập nhật dashboard
+                    },
+                  )),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.add_circle, color: Colors.green),
+                title: const Text("Tạo học kỳ mới"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _createNewSemester(context);
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
-
-    try {
-      await ApiService.deleteClass(classId);
-
-      // Xóa thành công, cập nhật UI:
-      if (mounted) {
-        setState(() {
-          // Tìm và xóa lớp học theo ID từ danh sách cục bộ
-          classes.removeWhere((cls) => cls['_id'] == classId);
-        });
-        // Hiển thị thông báo thành công
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Đã xóa lớp '$className' thành công!", style: const TextStyle(color: Colors.white)),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      // Xử lý lỗi và hiển thị thông báo lỗi
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst("Exception: ", "Lỗi xóa lớp: ")),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    }
   }
 
-
-  // ⭐️ SỬA LỖI: Cập nhật lớp học mới được tạo. Dữ liệu này là Map<String, dynamic> từ API
-  void _addNewClass(Map<String, dynamic> newClass) { 
-    setState(() {
-      classes.add(newClass);
-    });
-  }
-
-  // ⭐️ HÀM HỖ TRỢ HIỂN THỊ DỮ LIỆU/LOADING/LỖI
-  Widget _buildBodyContent() {
-    if (_isLoading) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: Color(0xFF6E48AA)),
-            SizedBox(height: 20),
-            Text("Đang tải danh sách lớp học...", style: TextStyle(fontSize: 16, color: Colors.grey)),
-          ],
+  void _createNewSemester(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Tạo học kỳ mới"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: "VD: Học kỳ 2 - 2025-2026",
+            border: OutlineInputBorder(),
+          ),
         ),
-      );
-    }
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Hủy")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Provider.of<SemesterProvider>(context, listen: false).add(controller.text.trim());
+                Navigator.pop(ctx);
+                setState(() {});
+              }
+            },
+            child: const Text("Tạo", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 50),
-            const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16)),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _loadClasses,
-              icon: const Icon(Icons.refresh),
-              label: const Text("Thử lại"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6E48AA),
-                foregroundColor: Colors.white,
+  // === HÀM LEGEND AN TOÀN – KHÔNG LỖI CONTEXT ===
+  Widget _buildLegendItem(String text, Color color, bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.6),
+                blurRadius: 10,
+                spreadRadius: 2,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      );
-    }
-    
-    if (classes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.school_outlined, color: Colors.grey.withOpacity(0.5), size: 80),
-            const SizedBox(height: 20),
-            const Text(
-              "Bạn chưa tạo lớp học nào.", 
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              "Nhấn nút '+' để bắt đầu tạo lớp mới.", 
-              style: TextStyle(fontSize: 16, color: Colors.grey.withOpacity(0.8)),
-            ),
-          ],
+        const SizedBox(width: 12),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white70 : Colors.black87,
+          ),
         ),
-      );
-    }
-
-    // HIỂN THỊ DANH SÁCH LỚP HỌC
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: classes.length,
-      itemBuilder: (context, index) {
-        // Ép kiểu lớp học về Map<String, String> để sử dụng _buildClassCard cũ
-        final cls = classes[index].map((key, value) => MapEntry(key, value.toString())); 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: _buildClassCard(cls, index),
-        );
-      },
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... (Code AppBar và Drawer giữ nguyên)
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      
+      drawer: const InstructorDrawer(),
+
+      // HEADER GIỐNG HỆT 100% class_list_screen.dart CỦA BẠN
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        toolbarHeight: 90, 
+        toolbarHeight: 90,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -259,12 +210,8 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                         : [Colors.white, const Color(0xFFE0AAFF)],
                   ).createShader(const Rect.fromLTWH(0, 0, 300, 70)),
                 letterSpacing: 1.5,
-                shadows: [
-                  Shadow(
-                    offset: const Offset(0, 3),
-                    blurRadius: 12,
-                    color: Colors.black.withOpacity(0.6),
-                  ),
+                shadows: const [
+                  Shadow(offset: Offset(0, 3), blurRadius: 12, color: Colors.black54),
                 ],
               ),
             ),
@@ -281,6 +228,52 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
         ),
 
         actions: [
+          // NÚT HỌC KỲ – ĐẸP, KẾ BÊN AVATAR, CHUẨN TDTU
+          Consumer<SemesterProvider>(
+            builder: (context, semesterProvider, child) {
+              final current = semesterProvider.current ?? Semester(id: "", name: "Chưa chọn học kỳ");
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _showSemesterPicker(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF6E48AA), Color(0xFF9D50BB)],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4)),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.school_rounded, color: Colors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              current.name.length > 18 ? "${current.name.substring(0, 18)}..." : current.name,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          // Avatar GV (giữ nguyên)
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Column(
@@ -289,52 +282,26 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
-                        blurRadius: 15,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 15, offset: const Offset(0, 6))],
                   ),
-                  child: CircleAvatar(
+                  child: const CircleAvatar(
                     radius: 24,
                     backgroundColor: Colors.white,
-                    child: const CircleAvatar(
-                      radius: 22,
-                      backgroundColor: Color(0xFF6E48AA),
-                      child: Text(
-                        "GV",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
+                    child: CircleAvatar(radius: 22, backgroundColor: Color(0xFF6E48AA), child: Text("GV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18))),
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  "Giảng viên",
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.95),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                const Text("Giảng viên", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
         ],
       ),
 
-      drawer: const InstructorDrawer(),
-
-      // ⭐️ BODY ĐÃ ĐƯỢC CẬP NHẬT ĐỂ HIỂN THỊ LOADING/ERROR/CONTENT
+      // BODY: NỀN SÓNG NEBULA + 6 Ô + BIỂU ĐỒ
       body: Stack(
         children: [
-          // Nền Nebula Wave
+          // Nền sóng Nebula giống hệt
           AnimatedBuilder(
             animation: _waveAnimation,
             builder: (_, __) => CustomPaint(
@@ -343,234 +310,193 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
             ),
           ),
 
-          // Danh sách lớp học
+          // Nội dung chính – giữ nguyên 6 ô + biểu đồ bạn thích
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 80), // Để tránh bị che bởi AppBar
-              child: _buildBodyContent(), // ⭐️ Sử dụng hàm kiểm tra trạng thái
-            ),
-          ),
-        ],
-      ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 100, 20, 20), // 100 để tránh bị AppBar che
+              child: Column(
+                children: [
+                  // HÀNG 1
+                  Row(
+                    children: [
+                      _buildBigCard(context, title: "Lớp học", count: "12", icon: Icons.class_, color: const Color(0xFF8E24AA), onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ClassListScreen()));
+                      }),
+                      const SizedBox(width: 16),
+                      _buildBigCard(context, title: "Sinh viên", count: "248", icon: Icons.people, color: const Color(0xFF3949AB)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF6E48AA),
-        elevation: 15,
-        child: const Icon(Icons.add, color: Colors.white, size: 32),
-        onPressed: () {
-          // ⭐️ TRUYỀN HÀM CALLBACK ĐÃ SỬA LỖI
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => CreateClassScreen(onClassCreated: _addNewClass)),
-          );
-        },
-      ),
-    );
-  }
+                  // HÀNG 2
+                  Row(
+                    children: [
+                      _buildBigCard(context, title: "Quiz", count: "18", icon: Icons.quiz, color: const Color(0xFFFF8F00)),
+                      const SizedBox(width: 16),
+                      _buildBigCard(context, title: "Bài tập", count: "24", icon: Icons.assignment_turned_in, color: const Color(0xFF2E7D32)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-  // ⭐️ _buildClassCard phải nhận Map<String, String> vì đó là kiểu dữ liệu bạn đang sử dụng trong hàm này
-  Widget _buildClassCard(Map<String, String> cls, int index) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final List<String> backgrounds = [
-      // ... (Giữ nguyên danh sách ảnh nền)
-      'assets/images/banner1.jpg',
-      'assets/images/banner2.jpg',
-      'assets/images/banner3.jpg',
-    ];
-    // Chú ý: Bạn cần đảm bảo các file ảnh này tồn tại trong thư mục assets và đã khai báo trong pubspec.yaml
-    final String bgImage = backgrounds[index % backgrounds.length];
+                  // HÀNG 3
+                  Row(
+                    children: [
+                      _buildBigCard(context, title: "Thông báo", count: "5 mới", icon: Icons.notifications_active, color: const Color(0xFFD32F2F)),
+                      const SizedBox(width: 16),
+                      _buildBigCard(context, title: "Báo cáo", count: "", icon: Icons.bar_chart, color: const Color(0xFF00695C)),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
 
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 16,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: SizedBox(
-          height: 250,
-          child: Stack(
-            children: [
-              // Ảnh nền
-              Positioned.fill(
-                child: Image.asset(
-                  bgImage,
-                  fit: BoxFit.cover,
-                ),
-              ),
-
-              // Lớp tối nhẹ để chữ dễ đọc
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black.withOpacity(0.35),
-                ),
-              ),
-
-              // Nội dung chính
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          cls['name'] ?? 'Lớp học',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            shadows: [
-                              Shadow(offset: Offset(0, 2), blurRadius: 8, color: Colors.black87),
-                            ],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                  // BIỂU ĐỒ TRÒN ĐẸP LUNG LINH
+                  Card(
+                    elevation: 16,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                    child: Container(
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: isDark
+                              ? [Colors.grey[900]!, const Color(0xFF1A0033)]
+                              : [Colors.white, const Color(0xFFF8F5FF)],
                         ),
-                        const SizedBox(height: 12),
-                        if ((cls['section'] ?? '').isNotEmpty)
-                          _infoRow(Icons.segment, "Phần: ${cls['section']}"),
-                        if ((cls['room'] ?? '').isNotEmpty)
-                          _infoRow(Icons.room, "Phòng: ${cls['room']}"),
-                        if ((cls['subject'] ?? '').isNotEmpty)
-                          _infoRow(Icons.book, "Chủ đề: ${cls['subject']}"),
-                      ],
-                    ),
-
-                    // NÚT 3 CHẤM + MENU XÓA
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: PopupMenuButton<String>(
-                        color: isDark ? Colors.grey[900]! : Colors.white, 
-                        surfaceTintColor: Colors.transparent,
-                        shadowColor: Colors.black.withOpacity(0.3),
-                        elevation: 12,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        offset: const Offset(0, -50),
-                        icon: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.25),
-                            shape: BoxShape.circle,
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            "Tỷ lệ hoàn thành khóa học",
+                            style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
                           ),
-                          child: const Icon(Icons.more_vert, color: Colors.white, size: 28),
-                        ),
-                        onSelected: (value) {
-                          if (value == 'delete') {
-                            showDialog(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                backgroundColor: isDark ? Colors.grey[900]! : Colors.white,
-                                surfaceTintColor: Colors.transparent,
-                                title: Row(
-                                  children: [
-                                    const Icon(Icons.delete, color: Colors.red, size: 28),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      "Xóa lớp học",
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
-                                    ),
-                                  ],
-                                ),
-                                content: Text(
-                                  "Bạn có chắc chắn muốn xóa lớp \"${cls['name'] ?? 'này'}\" không?\n\nHành động này không thể hoàn tác.",
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white70 : Colors.black87,
-                                    height: 1.4,
+                          const SizedBox(height: 32),
+
+                          // BIỂU ĐỒ TRÒN – ĐÃ BỎ VÒNG TRẮNG Ở GIỮA
+                          SizedBox(
+                            height: 240,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                CustomPaint(
+                                  size: const Size(240, 240),
+                                  painter: CleanDonutPainter(
+                                    values: [68, 22, 10],
+                                    colors: const [
+                                      Color(0xFF4CAF50), // Xanh hoàn thành
+                                      Color(0xFFFFC107), // Vàng đang học
+                                      Color(0xFFE53935), // Đỏ chưa bắt đầu
+                                    ],
                                   ),
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: Text(
-                                      "Hủy",
+
+                                // CHỮ TRUNG TÂM – RÕ RÀNG, ĐẸP Ở CẢ 2 MODE
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      "68%",
                                       style: TextStyle(
-                                        color: isDark ? Colors.white70 : Colors.grey,
-                                        fontWeight: FontWeight.w600,
+                                        fontSize: 68,
+                                        fontWeight: FontWeight.w900,
+                                        color: isDark ? Colors.white : const Color(0xFF6A1B9A),
+                                        shadows: isDark
+                                            ? [
+                                                const Shadow(
+                                                  offset: Offset(0, 2),
+                                                  blurRadius: 12,
+                                                  color: Colors.black54,
+                                                ),
+                                              ]
+                                            : null,
                                       ),
                                     ),
-                                  ),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Hoàn thành",
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white70 : Colors.black54,
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
-                                    // ⭐️ GỌI HÀM XÓA QUA API THỰC TẾ
-                                    onPressed: () {
-                                      final String idToDelete = cls['_id'] ?? '';
-                                      final String nameToDelete = cls['name'] ?? 'Lớp học không tên';
-                                      
-                                      if (idToDelete.isNotEmpty) {
-                                        _deleteClass(idToDelete, nameToDelete); // Gọi hàm xóa API
-                                      } else {
-                                        Navigator.pop(ctx);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text("Lỗi: Không tìm thấy ID lớp học."),
-                                            backgroundColor: Colors.orange,
-                                            duration: Duration(seconds: 3),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    child: const Text("Xóa", style: TextStyle(fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.delete_outline, color: Colors.red),
-                                const SizedBox(width: 12),
-                                Text(
-                                  "Xóa lớp học",
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white : Colors.black87,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
+
+                          const SizedBox(height: 28),
+
+                          // LEGEND ĐẸP – KHÔNG DÙNG CONTEXT TRONG HÀM RIÊNG → KHÔNG LỖI!
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildLegendItem("Hoàn thành", const Color(0xFF4CAF50), isDark),
+                              _buildLegendItem("Đang học", const Color(0xFFFFC107), isDark),
+                              _buildLegendItem("Chưa bắt đầu", const Color(0xFFE53935), isDark),
+                            ],
+                          ),
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
-            ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // GIỮ NGUYÊN HÀM CŨ BẠN THÍCH
+  Widget _buildBigCard(BuildContext context, {required String title, required String count, required IconData icon, required Color color, VoidCallback? onTap}) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Card(
+          elevation: 12,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(colors: [color, color.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(radius: 28, backgroundColor: Colors.white.withOpacity(0.3), child: Icon(icon, size: 36, color: Colors.white)),
+                const SizedBox(height: 20),
+                Text(title, style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                Text(count.isEmpty ? "Xem chi tiết →" : count, style: const TextStyle(fontSize: 32, color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // Widget hỗ trợ hiển thị thông tin lớp (Giữ nguyên)
-  Widget _infoRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: Colors.white70),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: const TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
+  Widget _legend(String text, Color color) {
+    return Row(
+      children: [
+        Container(width: 16, height: 16, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 8),
+        Text(text, style: const TextStyle(fontSize: 14)),
+      ],
     );
   }
 }
 
-// _NebulaWavePainter giữ nguyên như cũ...
+// COPY NGUYÊN XI TỪ class_list_screen.dart CỦA BẠN
 class _NebulaWavePainter extends CustomPainter {
   final double animationValue;
   final bool isDark;
@@ -605,4 +531,44 @@ class _NebulaWavePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => true;
+}
+
+// === PAINTER MỚI – KHÔNG CÓ VÒNG TRẮNG Ở GIỮA ===
+class CleanDonutPainter extends CustomPainter {
+  final List<double> values;
+  final List<Color> colors;
+
+  CleanDonutPainter({required this.values, required this.colors});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 * 0.85;
+    final strokeWidth = 34.0;
+    double startAngle = -pi / 2;
+
+    final total = values.reduce((a, b) => a + b);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < values.length; i++) {
+      final sweepAngle = (values[i] / total) * 2 * pi;
+      paint.color = colors[i];
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepAngle,
+        false,
+        paint,
+      );
+      startAngle += sweepAngle;
+    }
+
+    // BỎ HOÀN TOÀN VÒNG TRẮNG Ở GIỮA → ĐỂ TRONG SUỐT
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }
