@@ -22,6 +22,12 @@ const ClassSchema = new mongoose.Schema({
         trim: true,
         default: ''
     },
+    semester: { 
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Semester',
+        required: [true, 'Lớp học phải thuộc về một học kỳ'], // Bắt buộc
+    },
+    
     createdAt: {
         type: Date,
         default: Date.now

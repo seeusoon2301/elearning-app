@@ -75,7 +75,7 @@ class ApiService {
   }
 
   // =====================================================================
-  // ⭐️ HÀM MỚI: TẠO LỚP HỌC (POST /api/classes/create)
+  // HÀM MỚI: TẠO LỚP HỌC (POST /api/admin/classes/create)
   // =====================================================================
   static Future<Map<String, dynamic>> createClass(Map<String, String> classData) async {
     final url = Uri.parse("$baseUrl/admin/classes/create");
@@ -103,18 +103,15 @@ class ApiService {
   }
 
   // =====================================================================
-  // ⭐️ HÀM MỚI: LẤY TẤT CẢ LỚP HỌC (GET /api/classes)
+  // HÀM MỚI: LẤY TẤT CẢ LỚP HỌC (GET /api/admin/classes)
+  // (Giữ nguyên cho mục đích chung, nhưng nên dùng hàm mới bên dưới cho ClassListScreen)
   // =====================================================================
   static Future<List<Map<String, dynamic>>> fetchAllClasses() async {
     final url = Uri.parse("$baseUrl/admin/classes"); 
     
-    // Nếu bạn cần token để lấy dữ liệu này, hãy uncomment dòng dưới
-    // final token = await _getToken();
-    
     try {
       final response = await http.get(
         url,
-        // headers: {'Authorization': 'Bearer $token'}, // Chỉ cần nếu route là Private
       );
 
       if (response.statusCode == 200) {
@@ -137,10 +134,57 @@ class ApiService {
   }
   
   // =====================================================================
-  // ⭐️ HÀM XÓA LỚP HỌC MỚI (DELETE /api/admin/classes/:id)
+  // 🔥 HÀM MỚI QUAN TRỌNG: LẤY DANH SÁCH LỚP HỌC THEO HỌC KỲ ID
+  // Endpoint giả định: GET /api/admin/semesters/:semesterId/classes
+  // =====================================================================
+  static Future<List<Map<String, dynamic>>> fetchClassesBySemesterId(String semesterId) async {
+    // Cập nhật endpoint phù hợp với backend của bạn. Tôi dùng path param.
+    final url = Uri.parse("$baseUrl/admin/semesters/$semesterId/classes"); 
+    final token = await _getToken();
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token', // Cần token để xác thực giảng viên
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = json.decode(response.body);
+        
+        // Giả định backend trả về trực tiếp List hoặc { data: List }
+        if (responseBody is List) {
+          return responseBody.map((item) => item as Map<String, dynamic>).toList();
+        }
+        
+        if (responseBody is Map && responseBody['data'] is List) {
+          return (responseBody['data'] as List)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } 
+        
+        // Xử lý trường hợp không có lớp học (trả về list rỗng)
+        return [];
+
+      } else if (response.statusCode == 404) {
+        // Có thể server trả 404 nếu không tìm thấy học kỳ, nhưng thường trả 200 với list rỗng
+        return [];
+      } else {
+        final responseBody = json.decode(response.body);
+        final errorMessage = responseBody['message'] ?? 'Thất bại khi tải lớp học theo học kỳ. Mã lỗi: ${response.statusCode}';
+        throw Exception(errorMessage);
+      }
+    } catch (e) {
+      throw Exception('Lỗi kết nối hoặc xử lý dữ liệu: $e');
+    }
+  }
+
+  // =====================================================================
+  // HÀM XÓA LỚP HỌC MỚI (DELETE /api/admin/classes/:id)
   // =====================================================================
   static Future<void> deleteClass(String classId) async {
-    // Endpoint: DELETE /api/admin/classes/:id
+    // Endpoint: DELETE /api/admin/classes/delete/:id
     final url = Uri.parse("$baseUrl/admin/classes/delete/$classId"); 
     final token = await _getToken();
 
@@ -165,6 +209,68 @@ class ApiService {
       throw Exception(errorMessage);
     }
   }
+
+  // =====================================================================
+  // HÀM MỚI: TẠO HỌC KỲ (POST /api/admin/semesters)
+  // =====================================================================
+  static Future<Map<String, dynamic>> createSemester(String name, String code) async {
+    final url = Uri.parse("$baseUrl/admin/semesters");
+
+    final token = await _getToken();
+
+    final payload = {
+      'name': name,
+      'code': code,
+    };
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: json.encode(payload),
+    );
+
+    if (response.body.isEmpty) {
+      throw Exception('Server không phản hồi.');
+    }
+
+    final responseBody = json.decode(response.body);
+
+    if (response.statusCode == 201) {
+      return responseBody; // backend trả về object semester
+    } else {
+      final message = responseBody['error'] ?? responseBody['message'] ?? 'Lỗi khi tạo học kỳ.';
+      throw Exception(message);
+    }
+  }
+
+  // =====================================================================
+  // HÀM MỚI: LẤY DANH SÁCH HỌC KỲ (GET /api/admin/semesters)
+  // =====================================================================
+  static Future<List<Map<String, dynamic>>> fetchSemesters() async {
+    final url = Uri.parse("$baseUrl/admin/semesters");
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is List) {
+          return data.map((e) => e as Map<String, dynamic>).toList();
+        }
+        // nếu backend trả về object { success: ..., data: [...] }
+        if (data is Map && data['data'] is List) {
+          return (data['data'] as List).map((e) => e as Map<String, dynamic>).toList();
+        }
+        throw Exception('Cấu trúc phản hồi không hợp lệ khi lấy học kỳ.');
+      } else {
+        throw Exception('Thất bại khi tải học kỳ. Mã lỗi: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Lỗi kết nối hoặc xử lý dữ liệu: $e');
+    }
+  }
+  
   // =====================================================================
   // HÀM HỖ TRỢ LẤY TOKEN
   // =====================================================================

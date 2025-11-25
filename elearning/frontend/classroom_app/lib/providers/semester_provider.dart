@@ -2,14 +2,22 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 
 class Semester {
   final String id;
   final String name;
-  Semester({required this.id, required this.name});
+  final String? code;
+  Semester({required this.id, required this.name, this.code});
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name};
-  factory Semester.fromJson(Map<String, dynamic> json) => Semester(id: json['id'], name: json['name']);
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'code': code};
+  factory Semester.fromJson(Map<String, dynamic> json) {
+    // backend may return _id or id
+    final id = json['_id'] ?? json['id'] ?? '';
+    final name = json['name'] ?? '';
+    final code = json['code'];
+    return Semester(id: id.toString(), name: name.toString(), code: code?.toString());
+  }
 }
 
 class SemesterProvider with ChangeNotifier {
@@ -20,7 +28,35 @@ class SemesterProvider with ChangeNotifier {
   List<Semester> get list => _list;
 
   SemesterProvider() {
-    _loadFromPrefs();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final loaded = await _loadFromServer();
+    if (!loaded) {
+      await _loadFromPrefs();
+    }
+    notifyListeners();
+  }
+
+  Future<bool> _loadFromServer() async {
+    try {
+      final data = await ApiService.fetchSemesters();
+      _list = data.map((e) => Semester.fromJson(e)).toList();
+
+      // If server returns empty list, keep _list empty and _current null
+      if (_list.isEmpty) {
+        _current = null;
+        return true; // treated as successful load (empty state)
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final currentId = prefs.getString('currentSemesterId');
+      _current = _list.firstWhere((s) => s.id == currentId, orElse: () => _list.first);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _loadFromPrefs() async {
@@ -45,11 +81,12 @@ class SemesterProvider with ChangeNotifier {
   }
 
   Future<void> _saveToPrefs() async {
+    // Only persist the currently selected semester id locally.
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = _list.map((s) => s.toJson()).toList();
-    await prefs.setString('semesters', jsonEncode(jsonList));
     if (_current != null) {
       await prefs.setString('currentSemesterId', _current!.id);
+    } else {
+      await prefs.remove('currentSemesterId');
     }
   }
 
@@ -59,11 +96,50 @@ class SemesterProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void add(String name) async {
-    final newSemester = Semester(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name);
-    _list.add(newSemester);
-    _current = newSemester;
+  Future<void> add(String name) async {
+    // Try create on backend first. Generate a code from name.
+    final generatedCode = _generateCodeFromName(name);
+    // Create via backend; do not fallback to local-only creation.
+    final created = await ApiService.createSemester(name, generatedCode);
+    final sem = Semester.fromJson(created);
+    // Insert or replace if exists
+    _list.removeWhere((s) => s.id == sem.id || s.code == sem.code);
+    _list.insert(0, sem);
+    _current = sem;
     await _saveToPrefs();
     notifyListeners();
+    return;
+  }
+
+  String _generateCodeFromName(String name) {
+    // Chuyển về chữ hoa để dễ xử lý
+    final upperName = name.toUpperCase();
+
+    // 1. Thay thế "HỌC KỲ" bằng "HK"
+    String result = upperName.replaceAll('HỌC KỲ', 'HK');
+
+    // 2. Loại bỏ các khoảng trắng và dấu gạch ngang (trừ dấu gạch ngang phân cách chính)
+    // và các ký tự không cần thiết khác.
+    // Ví dụ: "HK 1 - 2024-2025"
+    
+    // Loại bỏ các ký tự không phải chữ cái, số, hoặc dấu gạch ngang
+    result = result.replaceAll(RegExp(r'[^A-Z0-9\-]'), ''); 
+
+    // Xử lý chuỗi "HK1-2024-2025" thành "HK1-20242025"
+    // Giữ lại dấu gạch ngang đầu tiên, loại bỏ các dấu gạch ngang sau đó
+    final parts = result.split('-');
+    
+    if (parts.length >= 2) {
+      // Lấy phần đầu tiên (ví dụ: "HK1")
+      final prefix = parts.first; 
+      
+      // Nối các phần còn lại, loại bỏ các dấu gạch ngang giữa năm (ví dụ: "2024" + "2025" = "20242025")
+      final suffix = parts.sublist(1).join(''); 
+      
+      return '$prefix-$suffix'; // Nối lại với dấu gạch ngang phân cách
+    }
+
+    // Trường hợp dự phòng nếu không theo định dạng "X - Y"
+    return result;
   }
 }

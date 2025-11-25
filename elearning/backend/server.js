@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const classRoutes = require('./routes/classRoutes');
 const authRoutes = require('./routes/authRoutes');
+const semesterRoutes = require('./routes/semesterRoutes');
 const cors = require('cors');
 // Tải biến môi trường từ file .env
 dotenv.config();
@@ -19,6 +20,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 // Định nghĩa Routes
 app.use('/api/admin/classes', classRoutes);
+// Học kỳ
+app.use('/api/admin/semesters', semesterRoutes);
 
 // Khởi động server
 const PORT = process.env.PORT || 5000;

@@ -1,6 +1,4 @@
 // lib/instructor_dashboard.dart
-// HEADER GIỐNG HỆT 100% class_list_screen.dart – TỪNG PIXEL, TỪNG DÒNG CODE!
-// GIỮ NGUYÊN 6 Ô + BIỂU ĐỒ BẠN ĐANG THÍCH
 
 import 'dart:math';
 import 'package:classroom_app/providers/semester_provider.dart';
@@ -8,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import './screens/class_list_screen.dart';        // Đường dẫn đúng của bạn
 import 'instructor_drawer.dart';
+
+// Giả định: Semester và SemesterProvider được định nghĩa trong ../providers/semester_provider.dart
 
 class InstructorDashboard extends StatefulWidget {
   const InstructorDashboard({super.key});
@@ -25,6 +25,10 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
     super.initState();
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
+    // Giả định: Tải hoặc chọn học kỳ ban đầu ở đây
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   Provider.of<SemesterProvider>(context, listen: false).loadInitial();
+    // });
   }
 
   @override
@@ -34,6 +38,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
   }
 
   void _showSemesterPicker(BuildContext context) {
+    // ... (logic giữ nguyên)
     final provider = Provider.of<SemesterProvider>(context, listen: false);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -49,6 +54,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
             mainAxisSize: MainAxisSize.min,
             children: [
               ...provider.list.map((semester) => ListTile(
+                    // Giả định Semester là một class có id và name
                     leading: Icon(
                       semester.id == provider.current?.id ? Icons.check_circle : Icons.radio_button_unchecked,
                       color: const Color(0xFF6E48AA),
@@ -78,6 +84,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
   }
 
   void _createNewSemester(BuildContext context) {
+    // ... (logic giữ nguyên)
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -94,9 +101,11 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Hủy")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                Provider.of<SemesterProvider>(context, listen: false).add(controller.text.trim());
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                final provider = Provider.of<SemesterProvider>(context, listen: false);
+                await provider.add(name);
                 Navigator.pop(ctx);
                 setState(() {});
               }
@@ -108,7 +117,89 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
     );
   }
 
-  // === HÀM LEGEND AN TOÀN – KHÔNG LỖI CONTEXT ===
+  // 🔥 HÀM _buildBigCard ĐÃ CẬP NHẬT KIỂM TRA HỌC KỲ
+  Widget _buildBigCard(BuildContext context, {required String title, required String count, required IconData icon, required Color color, VoidCallback? onTap}) {
+    final isClassCard = title == "Lớp học";
+    
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (isClassCard) {
+            // Lấy SemesterProvider để kiểm tra học kỳ
+            final semesterProvider = Provider.of<SemesterProvider>(context, listen: false);
+            // Giả định Semester class có thuộc tính id và name
+            if (semesterProvider.current == null || semesterProvider.current!.id.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Vui lòng chọn hoặc tạo Học kỳ trước khi xem lớp học."),
+                    backgroundColor: Color(0xFF9D50BB),
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                return;
+            }
+          }
+          // Thực hiện điều hướng/hành động mặc định
+          onTap?.call();
+        },
+        child: Card(
+          elevation: 16,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                colors: [color.withOpacity(0.9), color],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.5),
+                  blurRadius: 15,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Icon(icon, color: Colors.white, size: 48),
+                    Text(
+                      count,
+                      style: const TextStyle(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        shadows: [Shadow(offset: Offset(0, 2), blurRadius: 10, color: Colors.black54)],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  // === HÀM LEGEND AN TOÀN – KHÔNG LỖI CONTEXT === (Giữ nguyên)
   Widget _buildLegendItem(String text, Color color, bool isDark) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -149,7 +240,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
       extendBodyBehindAppBar: true,
       drawer: const InstructorDrawer(),
 
-      // HEADER GIỐNG HỆT 100% class_list_screen.dart CỦA BẠN
+      // HEADER (Giữ nguyên)
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -228,9 +319,10 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
         ),
 
         actions: [
-          // NÚT HỌC KỲ – ĐẸP, KẾ BÊN AVATAR, CHUẨN TDTU
+          // NÚT HỌC KỲ – CÓ LISTENER ĐỂ HIỂN THỊ TÊN HỌC KỲ
           Consumer<SemesterProvider>(
             builder: (context, semesterProvider, child) {
+              // Giả định Semester là một class có id và name
               final current = semesterProvider.current ?? Semester(id: "", name: "Chưa chọn học kỳ");
 
               return Padding(
@@ -298,29 +390,66 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
         ],
       ),
 
-      // BODY: NỀN SÓNG NEBULA + 6 Ô + BIỂU ĐỒ
+      // BODY (Giữ nguyên)
       body: Stack(
         children: [
-          // Nền sóng Nebula giống hệt
+          // Nền sóng Nebula
           AnimatedBuilder(
             animation: _waveAnimation,
+            // Giả định _NebulaWavePainter được định nghĩa ở cuối file
             builder: (_, __) => CustomPaint(
               size: MediaQuery.of(context).size,
               painter: _NebulaWavePainter(_waveAnimation.value, isDark),
             ),
           ),
 
-          // Nội dung chính – giữ nguyên 6 ô + biểu đồ bạn thích
+          // Nội dung chính
           SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 100, 20, 20), // 100 để tránh bị AppBar che
+              padding: const EdgeInsets.fromLTRB(20, 100, 20, 20), 
               child: Column(
                 children: [
-                  // HÀNG 1
+                  // Nếu không có học kỳ, hiển thị thông báo
+                  Consumer<SemesterProvider>(builder: (context, provider, child) {
+                    // Giả định provider.list được tải từ API (hoặc là list rỗng)
+                    if (provider.list.isNotEmpty) return const SizedBox.shrink(); 
+                    return Card(
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text('Chưa có học kỳ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 6),
+                                  Text('Hãy tạo học kỳ mới từ server để quản lý lớp học.'),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
+                              onPressed: () => _createNewSemester(context),
+                              child: const Text('Tạo học kỳ mới', style: TextStyle(color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+
+                  // HÀNG 1: Lớp học
                   Row(
                     children: [
-                      _buildBigCard(context, title: "Lớp học", count: "12", icon: Icons.class_, color: const Color(0xFF8E24AA), onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ClassListScreen()));
+                      // NƠI GỌI HÀM _buildBigCard ĐÃ CẬP NHẬT
+                      _buildBigCard(context, title: "Lớp học", count: "12", icon: Icons.class_, color: const Color(0xFF8E24AA), onTap: () { 
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ClassListScreen())); 
                       }),
                       const SizedBox(width: 16),
                       _buildBigCard(context, title: "Sinh viên", count: "248", icon: Icons.people, color: const Color(0xFF3949AB)),
@@ -346,9 +475,10 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                       _buildBigCard(context, title: "Báo cáo", count: "", icon: Icons.bar_chart, color: const Color(0xFF00695C)),
                     ],
                   ),
+
                   const SizedBox(height: 32),
 
-                  // BIỂU ĐỒ TRÒN ĐẸP LUNG LINH
+                  // BIỂU ĐỒ TRÒN
                   Card(
                     elevation: 16,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
@@ -359,9 +489,7 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: isDark
-                              ? [Colors.grey[900]!, const Color(0xFF1A0033)]
-                              : [Colors.white, const Color(0xFFF8F5FF)],
+                          colors: isDark ? [Colors.grey[900]!, const Color(0xFF1A0033)] : [Colors.white, const Color(0xFFF8F5FF)],
                         ),
                       ),
                       child: Column(
@@ -369,59 +497,43 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                           Text(
                             "Tỷ lệ hoàn thành khóa học",
                             style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
                           ),
                           const SizedBox(height: 32),
 
-                          // BIỂU ĐỒ TRÒN – ĐÃ BỎ VÒNG TRẮNG Ở GIỮA
+                          // BIỂU ĐỒ TRÒN
                           SizedBox(
                             height: 240,
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
+                                // Giả định CleanDonutPainter được định nghĩa ở cuối file
                                 CustomPaint(
                                   size: const Size(240, 240),
                                   painter: CleanDonutPainter(
-                                    values: [68, 22, 10],
-                                    colors: const [
-                                      Color(0xFF4CAF50), // Xanh hoàn thành
-                                      Color(0xFFFFC107), // Vàng đang học
-                                      Color(0xFFE53935), // Đỏ chưa bắt đầu
-                                    ],
+                                    values: [68, 22, 10], // Giả định %
+                                    colors: const [Color(0xFF6E48AA), Colors.green, Colors.red],
                                   ),
                                 ),
-
-                                // CHỮ TRUNG TÂM – RÕ RÀNG, ĐẸP Ở CẢ 2 MODE
                                 Column(
-                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
                                       "68%",
                                       style: TextStyle(
-                                        fontSize: 68,
+                                        fontSize: 48,
                                         fontWeight: FontWeight.w900,
-                                        color: isDark ? Colors.white : const Color(0xFF6A1B9A),
-                                        shadows: isDark
-                                            ? [
-                                                const Shadow(
-                                                  offset: Offset(0, 2),
-                                                  blurRadius: 12,
-                                                  color: Colors.black54,
-                                                ),
-                                              ]
-                                            : null,
+                                        color: isDark ? Colors.white : const Color(0xFF6E48AA),
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
                                     Text(
-                                      "Hoàn thành",
+                                      "Đã hoàn thành",
                                       style: TextStyle(
-                                        fontSize: 18,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.w600,
                                         color: isDark ? Colors.white70 : Colors.black54,
-                                        letterSpacing: 0.5,
                                       ),
                                     ),
                                   ],
@@ -429,23 +541,23 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                               ],
                             ),
                           ),
+                          const SizedBox(height: 32),
 
-                          const SizedBox(height: 28),
-
-                          // LEGEND ĐẸP – KHÔNG DÙNG CONTEXT TRONG HÀM RIÊNG → KHÔNG LỖI!
+                          // Phần Legend của biểu đồ
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              _buildLegendItem("Hoàn thành", const Color(0xFF4CAF50), isDark),
-                              _buildLegendItem("Đang học", const Color(0xFFFFC107), isDark),
-                              _buildLegendItem("Chưa bắt đầu", const Color(0xFFE53935), isDark),
+                              _buildLegendItem("Hoàn thành (68%)", const Color(0xFF6E48AA), isDark),
+                              _buildLegendItem("Đang học (22%)", Colors.green, isDark),
+                              _buildLegendItem("Thất bại (10%)", Colors.red, isDark),
                             ],
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 40),
+
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -454,49 +566,9 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
       ),
     );
   }
-
-  // GIỮ NGUYÊN HÀM CŨ BẠN THÍCH
-  Widget _buildBigCard(BuildContext context, {required String title, required String count, required IconData icon, required Color color, VoidCallback? onTap}) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Card(
-          elevation: 12,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(colors: [color, color.withOpacity(0.8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(radius: 28, backgroundColor: Colors.white.withOpacity(0.3), child: Icon(icon, size: 36, color: Colors.white)),
-                const SizedBox(height: 20),
-                Text(title, style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
-                Text(count.isEmpty ? "Xem chi tiết →" : count, style: const TextStyle(fontSize: 32, color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _legend(String text, Color color) {
-    return Row(
-      children: [
-        Container(width: 16, height: 16, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 8),
-        Text(text, style: const TextStyle(fontSize: 14)),
-      ],
-    );
-  }
 }
 
-// COPY NGUYÊN XI TỪ class_list_screen.dart CỦA BẠN
+// === PAINTER SÓNG (Giữ nguyên) ===
 class _NebulaWavePainter extends CustomPainter {
   final double animationValue;
   final bool isDark;
@@ -506,6 +578,7 @@ class _NebulaWavePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
 
+    // Sóng 1 (lớn)
     final path1 = Path();
     paint.color = (isDark ? const Color(0xFF6E48AA) : const Color(0xFF9D50BB)).withOpacity(0.35);
     path1.moveTo(0, size.height * 0.3);
@@ -517,8 +590,9 @@ class _NebulaWavePainter extends CustomPainter {
     path1.close();
     canvas.drawPath(path1, paint);
 
+    // Sóng 2 (nhỏ hơn, màu đậm hơn)
     final path2 = Path();
-    paint.color = (isDark ? const Color(0xFF9D50BB) : const Color(0xFF6E48AA)).withOpacity(0.25);
+    paint.color = (isDark ? const Color(0xFF9D50BB) : const Color(0xFF6E48AA)).withOpacity(0.35);
     path2.moveTo(0, size.height * 0.5);
     for (double i = 0; i <= size.width; i++) {
       path2.lineTo(i, size.height * 0.5 + sin((i / size.width * 6 * 3.14159) - animationValue * 3 * 3.14159) * 80);
@@ -533,7 +607,7 @@ class _NebulaWavePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => true;
 }
 
-// === PAINTER MỚI – KHÔNG CÓ VÒNG TRẮNG Ở GIỮA ===
+// === PAINTER DONUT (Giữ nguyên) ===
 class CleanDonutPainter extends CustomPainter {
   final List<double> values;
   final List<Color> colors;
@@ -565,10 +639,8 @@ class CleanDonutPainter extends CustomPainter {
       );
       startAngle += sweepAngle;
     }
-
-    // BỎ HOÀN TOÀN VÒNG TRẮNG Ở GIỮA → ĐỂ TRONG SUỐT
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

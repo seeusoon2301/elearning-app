@@ -2,38 +2,56 @@
 const express = require('express');
 const router = express.Router();
 const Class = require('../models/Class');
-
+const Semester = require('../models/Semester');
 // =========================================================================
 // 1. API TẠO LỚP HỌC (POST /api/admin/classes/create)
 // =========================================================================
 router.post('/create', async (req, res) => {
-    try {
-        // Lấy dữ liệu từ body request
-        const { name, section, room, subject } = req.body;
+    try {
+        // 🔑 Bổ sung semesterId từ body request
+        const { name, section, room, subject, semesterId } = req.body; 
 
-        // Tạo đối tượng lớp học mới
-        const newClass = await Class.create({
-            name,
-            section,
-            room,
-            subject,
-        });
+        // 1. Kiểm tra xem semesterId có hợp lệ và tồn tại không
+        if (!semesterId) {
+            return res.status(400).json({ success: false, message: 'semesterId là bắt buộc.' });
+        }
+        
+        const semester = await Semester.findById(semesterId);
+        if (!semester) {
+            return res.status(404).json({ success: false, message: 'Học kỳ không tồn tại.' });
+        }
 
-        // Trả về đối tượng đã tạo thành công
-        res.status(201).json({
-            success: true,
-            message: 'Lớp học đã được tạo thành công.',
-            class: newClass
-        });
+        // 2. Tạo đối tượng lớp học mới và liên kết với Học kỳ
+        const newClass = await Class.create({
+            name,
+            section,
+            room,
+            subject,
+            // 🔑 Lưu ID học kỳ vào trường tham chiếu
+            semester: semesterId, 
+        });
 
-    } catch (error) {
-        console.error(error);
-        // Xử lý lỗi validation hoặc lỗi server
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Lỗi server khi tạo lớp học.'
-        });
-    }
+        // 3. Cập nhật Semester (Liên kết ngược)
+        // Đẩy ID lớp học mới vào mảng classes của Học kỳ
+        semester.classes.push(newClass._id);
+        await semester.save();
+
+        // 4. Trả về đối tượng đã tạo thành công
+        res.status(201).json({
+            success: true,
+            message: 'Lớp học đã được tạo và liên kết thành công.',
+            class: newClass
+        });
+
+    } catch (error) {
+        console.error(error);
+        // Xử lý lỗi validation hoặc lỗi server
+        // Nếu lỗi là do Mongoose Schema validation (ví dụ: semesterId sai format), error.message sẽ hiển thị
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Lỗi server khi tạo lớp học.'
+        });
+    }
 });
 
 // =========================================================================
