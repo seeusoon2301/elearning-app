@@ -6,6 +6,7 @@ import 'create_class_screen.dart';
 import '../instructor_drawer.dart';
 import '../services/api_service.dart'; 
 import '../providers/semester_provider.dart'; // ⭐️ Thêm import SemesterProvider
+import 'class_detail_screen.dart';
 
 class ClassListScreen extends StatefulWidget {
   const ClassListScreen({super.key}); 
@@ -553,172 +554,145 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
     ];
     final String bgImage = backgrounds[index % backgrounds.length];
 
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 16,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: SizedBox(
-          height: 250,
-          child: Stack(
-            children: [
-              // Ảnh nền
-              Positioned.fill(
-                child: Image.asset(
-                  bgImage,
-                  fit: BoxFit.cover,
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        // CHUYỂN SANG MÀN HÌNH CHI TIẾT LỚP – CÓ 3 TAB
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ClassDetailScreen(
+              classData: classes[index], // Truyền nguyên object gốc (có _id, semesterId,...)
+            ),
+          ),
+        );
+      },
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 16,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: SizedBox(
+            height: 250,
+            child: Stack(
+              children: [
+                // Ảnh nền
+                Positioned.fill(
+                  child: Image.asset(
+                    bgImage,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ),
 
-              // Lớp tối nhẹ để chữ dễ đọc
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black.withOpacity(0.35),
+                // Lớp tối nhẹ để chữ dễ đọc
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withOpacity(0.35),
+                  ),
                 ),
-              ),
 
-              // Nội dung chính
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          cls['name'] ?? 'Lớp học',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            shadows: [
-                              Shadow(offset: Offset(0, 2), blurRadius: 8, color: Colors.black87),
-                            ],
+                // Nội dung chính
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cls['name'] ?? 'Lớp học',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(offset: Offset(0, 2), blurRadius: 8, color: Colors.black87),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 12),
-                        if ((cls['section'] ?? '').isNotEmpty)
-                          _infoRow(Icons.segment, "Phần: ${cls['section']}"),
-                        if ((cls['room'] ?? '').isNotEmpty)
-                          _infoRow(Icons.room, "Phòng: ${cls['room']}"),
-                        if ((cls['subject'] ?? '').isNotEmpty)
-                          _infoRow(Icons.book, "Chủ đề: ${cls['subject']}"),
-                      ],
-                    ),
+                          const SizedBox(height: 12),
+                          if ((cls['section'] ?? '').isNotEmpty)
+                            _infoRow(Icons.segment, "Phần: ${cls['section']}"),
+                          if ((cls['room'] ?? '').isNotEmpty)
+                            _infoRow(Icons.room, "Phòng: ${cls['room']}"),
+                          if ((cls['subject'] ?? '').isNotEmpty)
+                            _infoRow(Icons.book, "Chủ đề: ${cls['subject']}"),
+                        ],
+                      ),
 
-                    // NÚT 3 CHẤM + MENU XÓA
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: PopupMenuButton<String>(
-                        color: isDark ? Colors.grey[900]! : Colors.white, 
-                        surfaceTintColor: Colors.transparent,
-                        shadowColor: Colors.black.withOpacity(0.3),
-                        elevation: 12,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        offset: const Offset(0, -50),
-                        icon: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.25),
-                            shape: BoxShape.circle,
+                      // NÚT 3 CHẤM + MENU XÓA (GIỮ NGUYÊN)
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: PopupMenuButton<String>(
+                          color: isDark ? Colors.grey[900]! : Colors.white,
+                          surfaceTintColor: Colors.transparent,
+                          shadowColor: Colors.black.withOpacity(0.3),
+                          elevation: 12,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          offset: const Offset(0, -50),
+                          icon: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.25),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.more_vert, color: Colors.white, size: 28),
                           ),
-                          child: const Icon(Icons.more_vert, color: Colors.white, size: 28),
-                        ),
-                        onSelected: (value) {
-                          if (value == 'delete') {
-                            showDialog(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                backgroundColor: isDark ? Colors.grey[900]! : Colors.white,
-                                surfaceTintColor: Colors.transparent,
-                                title: Row(
-                                  children: [
-                                    const Icon(Icons.delete, color: Colors.red, size: 28),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      "Xóa lớp học",
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                          onSelected: (value) {
+                            if (value == 'delete') {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  backgroundColor: isDark ? Colors.grey[900]! : Colors.white,
+                                  surfaceTintColor: Colors.transparent,
+                                  title: Row(
+                                    children: [
+                                      const Icon(Icons.delete, color: Colors.red, size: 28),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        "Xóa lớp học",
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                                      ),
+                                    ],
+                                  ),
+                                  content: Text(
+                                    "Bạn có chắc chắn muốn xóa lớp \"${cls['name'] ?? 'này'}\" không?\n\nHành động này không thể hoàn tác.",
+                                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, height: 1.4),
+                                  ),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Hủy")),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                      onPressed: () {
+                                        final String idToDelete = cls['_id'] ?? '';
+                                        final String nameToDelete = cls['name'] ?? 'Lớp học';
+                                        if (idToDelete.isNotEmpty) {
+                                          _deleteClass(idToDelete, nameToDelete);
+                                        }
+                                        Navigator.pop(ctx);
+                                      },
+                                      child: const Text("Xóa", style: TextStyle(color: Colors.white)),
                                     ),
                                   ],
                                 ),
-                                content: Text(
-                                  "Bạn có chắc chắn muốn xóa lớp \"${cls['name'] ?? 'này'}\" không?\n\nHành động này không thể hoàn tác.",
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white70 : Colors.black87,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: Text(
-                                      "Hủy",
-                                      style: TextStyle(
-                                        color: isDark ? Colors.white70 : Colors.grey,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                    // GỌI HÀM XÓA QUA API THỰC TẾ
-                                    onPressed: () {
-                                      final String idToDelete = cls['_id'] ?? '';
-                                      final String nameToDelete = cls['name'] ?? 'Lớp học không tên';
-                                      
-                                      if (idToDelete.isNotEmpty) {
-                                        _deleteClass(idToDelete, nameToDelete); // Gọi hàm xóa API
-                                      } else {
-                                        Navigator.pop(ctx);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text("Lỗi: Không tìm thấy ID lớp học."),
-                                            backgroundColor: Colors.orange,
-                                            duration: Duration(seconds: 3),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    child: const Text("Xóa", style: TextStyle(fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.delete_outline, color: Colors.red),
-                                const SizedBox(width: 12),
-                                Text(
-                                  "Xóa lớp học",
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white : Colors.black87,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                              );
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, color: Colors.red), SizedBox(width: 12), Text("Xóa lớp học")])),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
