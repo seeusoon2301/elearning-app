@@ -6,6 +6,7 @@ import '../signin.dart';
 import 'role_provider.dart';
 import 'services/api_service.dart';   // <<< THÊM DÒNG NÀY
 import 'instructor_dashboard.dart';
+import './screens/quiz_list_screen.dart';
 
 class InstructorDrawer extends StatelessWidget {
   const InstructorDrawer({super.key});
@@ -76,6 +77,19 @@ class InstructorDrawer extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const InstructorDashboard()),
                   );
                 }
+              },
+            ),
+            _buildItem(
+              context, 
+              Icons.quiz, 
+              "Quizzes",
+              onTap: () {
+                Navigator.pop(context); // Đóng drawer
+                // Chuyển đến trang QuizListScreen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const QuizListScreen()),
+                );
               },
             ),
             _buildItem(context, Icons.calendar_today, "Lịch"),

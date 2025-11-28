@@ -1,5 +1,5 @@
 // lib/instructor_dashboard.dart
-
+import './screens/quiz_list_screen.dart';
 import 'dart:math';
 import 'package:classroom_app/providers/semester_provider.dart';
 import 'package:flutter/material.dart';
@@ -460,7 +460,30 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                   // HÀNG 2
                   Row(
                     children: [
-                      _buildBigCard(context, title: "Quiz", count: "18", icon: Icons.quiz, color: const Color(0xFFFF8F00)),
+                      _buildBigCard(
+                        context,
+                        title: "Quiz",
+                        count: "18",
+                        icon: Icons.quiz_rounded,
+                        color: const Color(0xFFFF8F00),
+                        onTap: () {
+                          final semesterProvider = Provider.of<SemesterProvider>(context, listen: false);
+                          if (semesterProvider.current == null || semesterProvider.current!.id.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Vui lòng chọn hoặc tạo Học kỳ trước khi xem Quiz."),
+                                backgroundColor: Color(0xFFFF8F00),
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                            return;
+                          }
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const QuizListScreen()),
+                          );
+                        },
+                      ),
                       const SizedBox(width: 16),
                       _buildBigCard(context, title: "Bài tập", count: "24", icon: Icons.assignment_turned_in, color: const Color(0xFF2E7D32)),
                     ],
