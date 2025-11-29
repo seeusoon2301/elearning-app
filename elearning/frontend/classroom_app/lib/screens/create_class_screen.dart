@@ -15,7 +15,7 @@ class CreateClassScreen extends StatefulWidget {
 class _CreateClassScreenState extends State<CreateClassScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  final _sectionCtrl = TextEditingController();
+  final _instructorCtrl = TextEditingController();
   final _roomCtrl = TextEditingController();
   final _subjectCtrl = TextEditingController();
 
@@ -35,7 +35,7 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _sectionCtrl.dispose();
+    _instructorCtrl.dispose();
     _roomCtrl.dispose();
     _subjectCtrl.dispose();
     super.dispose();
@@ -87,7 +87,7 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
 
     final classDataToSend = {
       'name': _nameCtrl.text.trim(),
-      'section': _sectionCtrl.text.trim(),
+      'instructor': _instructorCtrl.text.trim(),
       'room': _roomCtrl.text.trim(),
       'subject': _subjectCtrl.text.trim(),
       // 🔑 GỬI ID HỌC KỲ ĐÃ CHỌN LÊN SERVER
@@ -259,10 +259,10 @@ class _CreateClassScreenState extends State<CreateClassScreen> {
               ),
               const SizedBox(height: 20),
               // -------------------------------------------------------------
-              // TextFormField: Phần (Section)
+              // TextFormField: Phần (instructor)
               // -------------------------------------------------------------
               TextFormField(
-                controller: _sectionCtrl,
+                controller: _instructorCtrl,
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
                   labelText: "Phần",

@@ -7,7 +7,7 @@ const ClassSchema = new mongoose.Schema({
         required: [true, 'Tên lớp học là bắt buộc'],
         trim: true,
     },
-    section: {
+    instructor: {
         type: String,
         trim: true,
         default: ''
@@ -27,7 +27,9 @@ const ClassSchema = new mongoose.Schema({
         ref: 'Semester',
         required: [true, 'Lớp học phải thuộc về một học kỳ'], // Bắt buộc
     },
-    
+    students: [
+        { type: mongoose.Schema.Types.ObjectId, ref: "Student" }
+    ],
     createdAt: {
         type: Date,
         default: Date.now

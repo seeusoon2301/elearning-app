@@ -5,6 +5,7 @@ const connectDB = require('./config/db');
 const classRoutes = require('./routes/classRoutes');
 const authRoutes = require('./routes/authRoutes');
 const semesterRoutes = require('./routes/semesterRoutes');
+const studentRoutes = require('./routes/studentRoutes');
 const cors = require('cors');
 // Tải biến môi trường từ file .env
 dotenv.config();
@@ -22,11 +23,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin/classes', classRoutes);
 // Học kỳ
 app.use('/api/admin/semesters', semesterRoutes);
-
+// ⭐️ GẮN STUDENT ROUTES VÀO ĐƯỜNG DẪN CHÍNH
+app.use('/api/admin/students', studentRoutes);
 // Khởi động server
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-    console.log(`Test API endpoint: \n  Login Admin POST: http://localhost:5000/api/auth/login\n  Create Class POST http://localhost:${PORT}/api/admin/classes/create\n  Show all class GET http://localhost:5000/api/admin/classes\n  Delete 1 Class http://localhost:5000/api/admin/classes/delete/:id`);
+    console.log(`Test API endpoint: \n  Login Admin POST: http://localhost:5000/api/auth/login\n  Create Class POST http://localhost:${PORT}/api/admin/classes/create\n  Show all class GET http://localhost:5000/api/admin/classes\n  Delete 1 Class http://localhost:5000/api/admin/classes/delete/:id\n  Create Student POST http://localhost:5000/api/admin/students/create\n  Show all students GET http://localhost:5000/api/admin/students`);
 });

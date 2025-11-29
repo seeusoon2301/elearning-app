@@ -1,9 +1,12 @@
-// lib/screens/class_detail_screen.dart
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../instructor_drawer.dart';
-import './create_annoucement_screen.dart'; // ĐÚNG RỒI, DÙNG FILE RIÊNG
-import 'package:shared_preferences/shared_preferences.dart'; // THÊM DÒNG NÀY
+import './create_annoucement_screen.dart';
+import './invite_student_screen.dart';
+// 1. IMPORT API SERVICE MỚI
+import '../services/api_service.dart'; 
+
 
 class ClassDetailScreen extends StatefulWidget {
   final Map<String, dynamic> classData;
@@ -20,7 +23,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   late Animation<double> _waveAnimation;
   int _selectedIndex = 0;
   
-  // DANH SÁCH THÔNG BÁO RIÊNG CHO TỪNG LỚP
+  // Dữ liệu cho tab Stream
   List<String> _announcements = [];
 
   String _selectedGroup = "Chưa có nhóm";
@@ -32,8 +35,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
     
-    _loadGroups(); // Load nhóm từ bộ nhớ
-    _loadAnnouncements(); // Load thông báo theo nhóm hiện tại
+    _loadGroups();
+    _loadAnnouncements();
   }
 
   Future<void> _loadAnnouncements() async {
@@ -51,7 +54,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     await prefs.setStringList(key, _announcements);
   }
 
-  // Hàm load nhóm (dán vào dưới _saveAnnouncements)
   Future<void> _loadGroups() async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'groups_${widget.classData['name'] ?? 'class'}';
@@ -63,19 +65,18 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         if (_groups.isEmpty) {
           _selectedGroup = "Chưa có nhóm";
         } else {
-          _selectedGroup = _groups[0]; // Mặc định chọn nhóm đầu tiên
+          _selectedGroup = _groups[0];
         }
       });
     }
   }
-
+  
   @override
   void dispose() {
     _waveController.dispose();
     super.dispose();
   }
 
-  // Hàm hiện chọn nhóm (dán vào cuối class)
   void _showGroupSelector(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -315,16 +316,12 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // MÀU CHỮ & ICON ĐƯỢC TỐI ƯU CHO CẢ 2 CHẾ ĐỘ
-    final titleColor = isDark ? Colors.white : Colors.black87;
-    final subtitleColor = isDark ? Colors.white70 : Colors.black54;
     final textColor = isDark ? Colors.white : Colors.black87;
     final hintColor = isDark ? Colors.white60 : Colors.black54;
     final iconColor = isDark ? const Color(0xFFE0AAFF) : const Color(0xFF6E48AA);
 
     final className = widget.classData['name'] ?? 'Lớp học';
-    final subject = widget.classData['subject'] ?? '';
-    final section = widget.classData['section'] ?? '';
+    final instructor = widget.classData['instructor'] ?? '';
     final room = widget.classData['room'] ?? '';
 
     return Scaffold(
@@ -360,7 +357,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
           ),
         ),
 
-        // THAY PHẦN title TRONG appBar BẰNG ĐOẠN NÀY
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -422,6 +418,28 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         ),
 
         actions: [
+          // ⭐️ THÊM ICON MỜI HỌC VIÊN KHI Ở TAB "MỌI NGƯỜI" (index 2)
+          if (_selectedIndex == 2) 
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: IconButton(
+                icon: const Icon(Icons.person_add, color: Colors.white, size: 28),
+                tooltip: 'Mời học viên',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => InviteStudentScreen(
+                        // Truyền ID và Tên lớp để màn hình mời sử dụng
+                        classId: widget.classData['_id']?.toString() ?? '',
+                        className: widget.classData['name'] ?? 'Lớp học',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: IconButton(icon: const Icon(Icons.more_vert, color: Colors.white, size: 32), onPressed: () {}),
@@ -448,8 +466,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
               children: [
                 SizedBox(height: MediaQuery.of(context).padding.top + kToolbarHeight + 30),
 
-                // Card thông tin lớp – màu chữ rõ ràng
-                if (section.isNotEmpty || room.isNotEmpty)
+                // Card thông tin lớp
+                if (instructor.isNotEmpty || room.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Card(
@@ -461,8 +479,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (section.isNotEmpty)
-                              _infoRow(Icons.segment, "Phần: $section", iconColor, textColor),
+                            if (instructor.isNotEmpty)
+                              _infoRow(Icons.segment, "Tên giảng viên: $instructor", iconColor, textColor),
                             if (room.isNotEmpty)
                               _infoRow(Icons.room, "Phòng: $room", iconColor, textColor),
                           ],
@@ -473,7 +491,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
 
                 const SizedBox(height: 24),
 
-                // 3 TAB – MÀU CHỮ + ICON ĐẸP, NỔI BẬT
+                // 3 TAB
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
@@ -497,7 +515,13 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
                         },
                       ),
                       AssignmentsTab(iconColor: iconColor, textColor: textColor, hintColor: hintColor),
-                      PeopleTab(iconColor: iconColor, textColor: textColor),
+                      // SỬ DỤNG WIDGET _StudentList MỚI ĐỂ GỌI API
+                      _StudentList(
+                        classId: widget.classData['_id']?.toString() ?? '',
+                        iconColor: iconColor,
+                        textColor: textColor,
+                        className: className,
+                      ),
                     ][_selectedIndex],
                   ),
                 ),
@@ -507,7 +531,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         ],
       ),
 
-      // Bottom bar tím đẹp
+      // Bottom bar
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -533,7 +557,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         ),
       ),
 
-      // DÙNG MÀN HÌNH RIÊNG – KHÔNG CÒN HÀM DƯ THỪA
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton(
               heroTag: 'detailFab',
@@ -549,7 +572,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
                         setState(() {
                           _announcements.insert(0, content);
                         });
-                        _saveAnnouncements(); // LƯU NGAY LẬP TỨC
+                        _saveAnnouncements();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text("Đăng thông báo thành công!"),
@@ -580,8 +603,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   }
 }
 
-// === 3 TAB ĐÃ CHỈNH MÀU HOÀN HẢO CHO DARK & LIGHT ===
-// THAY TOÀN BỘ StreamTab BẰNG CÁI NÀY (cực đẹp, giống Google Classroom 100%)
+// === CÁC TAB KHÁC GIỮ NGUYÊN ===
+
 class StreamTab extends StatelessWidget {
   final List<String> announcements;
   final Function(int) onDelete;
@@ -679,7 +702,7 @@ class StreamTab extends StatelessWidget {
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
-                onEdit(index, controller.text.trim()); // GỌI TRỰC TIẾP CALLBACK
+                onEdit(index, controller.text.trim());
                 Navigator.pop(ctx);
               }
             },
@@ -714,38 +737,171 @@ class AssignmentsTab extends StatelessWidget {
   }
 }
 
-class PeopleTab extends StatelessWidget {
-  final Color iconColor, textColor;
-  const PeopleTab({Key? key, required this.iconColor, required this.textColor}) : super(key: key);
+// ====================================================================
+// WIDGET _StudentList SỬ DỤNG FutureBuilder VÀ API SERVICE THỰC TẾ
+// ====================================================================
+class _StudentList extends StatefulWidget {
+  final String classId;
+  final Color iconColor;
+  final Color textColor;
+  final String className;
+
+  const _StudentList({
+    required this.classId,
+    required this.iconColor,
+    required this.textColor,
+    required this.className,
+  });
+
+  @override
+  State<_StudentList> createState() => _StudentListState();
+}
+
+class _StudentListState extends State<_StudentList> {
+  late Future<List<Map<String, dynamic>>> _studentsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Bắt đầu gọi API khi widget được khởi tạo
+    _studentsFuture = _fetchStudents();
+  }
+
+  // Hàm gọi API thực tế
+  Future<List<Map<String, dynamic>>> _fetchStudents() async {
+    if (widget.classId.isEmpty) {
+      // Xử lý trường hợp không có ID lớp
+      return []; 
+    }
+    // Gọi hàm fetchStudentsInClass từ ApiService
+    // Đây là nơi kết nối với Backend thực tế
+    return ApiService.fetchStudentsInClass(widget.classId);
+  }
+
+  void _refreshStudents() {
+    setState(() {
+      _studentsFuture = _fetchStudents();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Giáo viên (Giả định giáo viên là người đang xem)
         ListTile(
-          leading: CircleAvatar(backgroundColor: const Color(0xFF6E48AA), child: Text("GV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-          title: Text("Giáo viên", style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-          subtitle: Text("Bạn", style: TextStyle(color: textColor.withOpacity(0.8))),
+          leading: const CircleAvatar(
+            backgroundColor: Color(0xFF6E48AA),
+            child: Text("GV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          title: Text("Giáo viên", style: TextStyle(fontWeight: FontWeight.bold, color: widget.textColor)),
+          subtitle: Text("Bạn", style: TextStyle(color: widget.textColor.withOpacity(0.8))),
+          trailing: IconButton(
+            icon: Icon(Icons.refresh, color: widget.iconColor),
+            onPressed: _refreshStudents,
+          ),
         ),
         const Divider(height: 1),
+
+        // Danh sách sinh viên
         Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.people_alt_outlined, size: 110, color: iconColor.withOpacity(0.8)),
-                const SizedBox(height: 32),
-                Text("Mời học viên tham gia lớp học",
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: Icon(Icons.person_add, color: iconColor),
-                  label: Text("Mời học viên", style: TextStyle(color: iconColor, fontWeight: FontWeight.bold)),
-                  style: OutlinedButton.styleFrom(side: BorderSide(color: iconColor)),
-                  onPressed: () {},
-                ),
-              ],
-            ),
+          child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: _studentsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                // Đang tải
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: widget.iconColor),
+                      const SizedBox(height: 16),
+                      Text("Đang tải danh sách học viên...", style: TextStyle(color: widget.textColor.withOpacity(0.8))),
+                    ],
+                  ),
+                );
+              } else if (snapshot.hasError) {
+                // Xảy ra lỗi (ví dụ: lỗi kết nối, lỗi server 401/404)
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline_rounded, size: 80, color: Colors.red.shade400),
+                        const SizedBox(height: 16),
+                        Text('Lỗi tải dữ liệu: ${snapshot.error}', 
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.red.shade400, fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text('Vui lòng kiểm tra kết nối mạng và token xác thực.', 
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: widget.textColor.withOpacity(0.7))),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          icon: Icon(Icons.refresh, color: widget.iconColor),
+                          label: Text("Thử lại", style: TextStyle(color: widget.iconColor, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(side: BorderSide(color: widget.iconColor, width: 1.5)),
+                          onPressed: _refreshStudents,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final students = snapshot.data ?? [];
+
+              if (students.isEmpty) {
+                // Không có sinh viên
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.people_alt_outlined, size: 110, color: widget.iconColor.withOpacity(0.8)),
+                      const SizedBox(height: 32),
+                      Text("Lớp ${widget.className} chưa có học viên nào",
+                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: widget.textColor), textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        icon: Icon(Icons.person_add, color: widget.iconColor),
+                        label: Text("Mời học viên", style: TextStyle(color: widget.iconColor, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(side: BorderSide(color: widget.iconColor, width: 1.5)),
+                        onPressed: () {
+                          // Không cần điều hướng ở đây, vì đã có nút mời ở AppBar
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              // Hiển thị danh sách sinh viên
+              return ListView.separated(
+                itemCount: students.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final studentData = students[index];
+                  final studentName = studentData['name']?.toString() ?? "Không tên";
+                  final studentEmail = studentData['email']?.toString() ?? "";
+                  final studentMssv = studentData['mssv']?.toString() ?? "Chưa rõ";
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: widget.iconColor.withOpacity(0.6),
+                      child: Text(
+                        // Lấy ký tự đầu tiên của tên
+                        studentName.isNotEmpty ? studentName[0].toUpperCase() : "?",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    title: Text(studentName, style: TextStyle(color: widget.textColor, fontWeight: FontWeight.w500)),
+                    subtitle: Text('MSSV: $studentMssv', style: TextStyle(color: widget.textColor.withOpacity(0.7))),
+                    trailing: Text(studentEmail, style: TextStyle(color: widget.textColor.withOpacity(0.7))),
+                  );
+                },
+              );
+            },
           ),
         ),
       ],
@@ -753,7 +909,7 @@ class PeopleTab extends StatelessWidget {
   }
 }
 
-// _NebulaWavePainter giữ nguyên như cũ
+
 class _NebulaWavePainter extends CustomPainter {
   final double animationValue;
   final bool isDark;

@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // Thêm import nà
 import 'role_provider.dart';
 import 'signin.dart';
 import 'instructor_dashboard.dart';
-import 'home_page.dart';
+import 'home_page.dart'; // Import HomePage
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -57,14 +57,20 @@ class _HomeState extends State<Home> {
         // Dùng Provider.of LẦN NỮA để đảm bảo lấy giá trị role MỚI NHẤT
         final currentRole = Provider.of<RoleProvider>(context).role;
 
+        // Nếu role là null (chưa đăng nhập), chuyển về SignIn
+        if (currentRole == null) {
+          return const SignIn();
+        }
+        
+        // PHÂN LOẠI VÀ CHUYỂN HƯỚNG
         if (currentRole == "instructor") {
           return const InstructorDashboard();
         } 
         else if (currentRole == "student") {
-          return const HomePage();
+          return const HomePage(); // 👈 CHUYỂN ĐẾN TRANG CỦA STUDENT
         } 
         else {
-          // role == null hoặc không phải student/instructor → về SignIn
+          // Xử lý trường hợp role không xác định (ví dụ: đăng xuất)
           return const SignIn();
         }
       },

@@ -271,6 +271,66 @@ class ApiService {
     }
   }
   
+  static Future<void> inviteStudent(String classId, String email) async {
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/invite");
+
+    final res = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"email": email}),
+    );
+
+    final data = jsonDecode(res.body);
+
+    if (res.statusCode != 200) {
+      throw Exception(data["error"] ?? "Không thể mời học viên.");
+    }
+  }
+
+  // =====================================================================
+  // HÀM MỚI: LẤY DANH SÁCH SINH VIÊN TRONG LỚP HỌC
+  // GET /api/admin/classes/students/:classId
+  // =====================================================================
+  static Future<List<Map<String, dynamic>>> fetchStudentsInClass(String classId) async {
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/students");
+    final token = await _getToken();
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          // Gửi token xác thực nếu có
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseBody = jsonDecode(response.body);
+
+        // Kiểm tra cấu trúc phản hồi thành công
+        if (responseBody['success'] == true && responseBody['data'] is List) {
+          // Trả về danh sách sinh viên
+          return (responseBody['data'] as List)
+              .map((item) => item as Map<String, dynamic>)
+              .toList();
+        } else {
+          // Trường hợp API trả về 200 nhưng success=false hoặc data không hợp lệ
+          return []; 
+        }
+      } else {
+        // Xử lý lỗi HTTP status (ví dụ: 401 Unauthorized, 404 Not Found)
+        final responseBody = jsonDecode(response.body);
+        final errorMessage = responseBody['message'] ?? 'Thất bại khi tải sinh viên. Mã lỗi: ${response.statusCode}';
+        throw Exception(errorMessage);
+      }
+    } catch (e) {
+      // Xử lý lỗi kết nối mạng, timeout, hoặc lỗi định dạng JSON
+      print('Lỗi API fetchStudentsInClass: $e');
+      throw Exception('Lỗi kết nối hoặc xử lý dữ liệu: $e');
+    }
+  }
+
   // =====================================================================
   // HÀM HỖ TRỢ LẤY TOKEN
   // =====================================================================

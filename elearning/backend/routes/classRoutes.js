@@ -3,13 +3,16 @@ const express = require('express');
 const router = express.Router();
 const Class = require('../models/Class');
 const Semester = require('../models/Semester');
+const { getStudentsInClass } = require('../controllers/classController');
+const { createAnnouncement, getAnnouncementsByClass } = require('../controllers/AnnouncementController');
+
 // =========================================================================
 // 1. API TẠO LỚP HỌC (POST /api/admin/classes/create)
 // =========================================================================
 router.post('/create', async (req, res) => {
     try {
         // 🔑 Bổ sung semesterId từ body request
-        const { name, section, room, subject, semesterId } = req.body; 
+        const { name, instructor, room, subject, semesterId } = req.body; 
 
         // 1. Kiểm tra xem semesterId có hợp lệ và tồn tại không
         if (!semesterId) {
@@ -24,7 +27,7 @@ router.post('/create', async (req, res) => {
         // 2. Tạo đối tượng lớp học mới và liên kết với Học kỳ
         const newClass = await Class.create({
             name,
-            section,
+            instructor,
             room,
             subject,
             // 🔑 Lưu ID học kỳ vào trường tham chiếu
@@ -119,4 +122,29 @@ router.delete('/delete/:id', async (req, res) => {
     }
 });
 
+// --- LOGIC MỜI SINH VIÊN (Tích hợp Controller) ---
+const { inviteStudent } = require('../controllers/inviteStudentController');
+
+// =========================================================================
+// 4. API MỜI SINH VIÊN VÀO LỚP HỌC (POST /api/admin/classes/:classId/invite)
+// =========================================================================
+router.post('/:classId/invite', inviteStudent);
+
+// =========================================================================
+// 5. API LẤY DANH SÁCH SINH VIÊN TRONG LỚP (GET /api/admin/classes/students/:classId) (MỚI)
+// =========================================================================
+router.get('/:classId/students', getStudentsInClass);
+
+
+// =========================================================================
+// ⭐️ API ĐĂNG BẢNG TIN (ANNOUNCEMENTS) (MỚI)
+// =========================================================================
+// Đảm bảo bạn đã import { createAnnouncement, getAnnouncementsByClass } ở đầu file
+// Endpoint: /api/classes/:classId/announcements
+
+// POST /api/classes/:classId/announcements - Tạo bảng tin
+router.post('/:classId/announcements', createAnnouncement);
+
+// GET /api/classes/:classId/announcements - Lấy danh sách bảng tin
+router.get('/:classId/announcements', getAnnouncementsByClass);
 module.exports = router;

@@ -616,8 +616,8 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 12),
-                          if ((cls['section'] ?? '').isNotEmpty)
-                            _infoRow(Icons.segment, "Phần: ${cls['section']}"),
+                          if ((cls['instructor'] ?? '').isNotEmpty)
+                            _infoRow(Icons.segment, "Tên giảng viên: ${cls['instructor']}"),
                           if ((cls['room'] ?? '').isNotEmpty)
                             _infoRow(Icons.room, "Phòng: ${cls['room']}"),
                           if ((cls['subject'] ?? '').isNotEmpty)
