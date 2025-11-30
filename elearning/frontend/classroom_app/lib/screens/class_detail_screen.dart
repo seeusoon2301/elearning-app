@@ -25,9 +25,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   
   // Dữ liệu cho tab Stream
   List<String> _announcements = [];
-
-  String _selectedGroup = "Chưa có nhóm";
-  List<String> _groups = [];
   
   @override
   void initState() {
@@ -35,281 +32,26 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
     
-    _loadGroups();
     _loadAnnouncements();
   }
 
   Future<void> _loadAnnouncements() async {
     final prefs = await SharedPreferences.getInstance();
-    final groupKey = _selectedGroup == "Tất cả nhóm" ? "all" : _selectedGroup;
-    final key = 'announcements_${widget.classData['name']}_$groupKey';
+    final key = 'announcements_${widget.classData['_id'] ?? widget.classData['name']}';
     final saved = prefs.getStringList(key) ?? [];
     if (mounted) setState(() => _announcements = saved);
   }
 
   Future<void> _saveAnnouncements() async {
     final prefs = await SharedPreferences.getInstance();
-    final groupKey = _selectedGroup == "Tất cả nhóm" ? "all" : _selectedGroup;
-    final key = 'announcements_${widget.classData['name']}_$groupKey';
+    final key = 'announcements_${widget.classData['_id'] ?? widget.classData['name']}';
     await prefs.setStringList(key, _announcements);
-  }
-
-  Future<void> _loadGroups() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'groups_${widget.classData['name'] ?? 'class'}';
-    final saved = prefs.getStringList(key) ?? [];
-    
-    if (mounted) {
-      setState(() {
-        _groups = saved;
-        if (_groups.isEmpty) {
-          _selectedGroup = "Chưa có nhóm";
-        } else {
-          _selectedGroup = _groups[0];
-        }
-      });
-    }
   }
   
   @override
   void dispose() {
     _waveController.dispose();
     super.dispose();
-  }
-
-  void _showGroupSelector(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF121212) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, -5)),
-          ],
-        ),
-        child: _groups.isEmpty
-            // TRƯỜNG HỢP CHƯA CÓ NHÓM NÀO
-            ? Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.groups_outlined, size: 100, color: Colors.grey[500]),
-                    const SizedBox(height: 24),
-                    Text(
-                      "Chưa có nhóm học nào",
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Tạo nhóm đầu tiên để bắt đầu quản lý lớp",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        final controller = TextEditingController();
-                        final name = await showDialog<String>(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                            title: Text("Tạo nhóm đầu tiên", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                            content: TextField(
-                              controller: controller,
-                              autofocus: true,
-                              decoration: InputDecoration(
-                                hintText: "Ví dụ: Nhóm 1, Nhóm LT, Nhóm A...",
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                            ),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Hủy")),
-                              ElevatedButton(
-                                onPressed: () => Navigator.pop(context, controller.text.trim()),
-                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
-                                child: const Text("Tạo", style: TextStyle(color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (name != null && name.isNotEmpty) {
-                          setState(() {
-                            _groups.add(name);
-                            _selectedGroup = name;
-                          });
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setStringList('groups_${widget.classData['name']}', _groups);
-                          _loadAnnouncements();
-                        }
-                      },
-                      icon: const Icon(Icons.add_circle, size: 28),
-                      label: const Text("Tạo nhóm đầu tiên", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6E48AA),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                        elevation: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            // TRƯỜNG HỢP ĐÃ CÓ NHÓM
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Thanh kéo
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    width: 50,
-                    height: 6,
-                    decoration: BoxDecoration(color: isDark ? Colors.grey[700] : Colors.grey[300], borderRadius: BorderRadius.circular(10)),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-                    child: Text("Chọn nhóm học", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                  ),
-                  const Divider(height: 1, thickness: 1),
-                  SizedBox(
-                    height: 360,
-                    child: ListView.builder(
-                      itemCount: _groups.length,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemBuilder: (context, index) {
-                        final group = _groups[index];
-                        final isSelected = group == _selectedGroup;
-
-                        return ListTile(
-                          leading: Icon(
-                            isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                            color: isSelected ? const Color(0xFF6E48AA) : (isDark ? Colors.grey[600] : Colors.grey),
-                            size: 28,
-                          ),
-                          title: Text(
-                            group,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            color: isDark ? Colors.grey[800] : Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            onSelected: (value) async {
-                              if (value == 'edit') {
-                                final controller = TextEditingController(text: group);
-                                final newName = await showDialog<String>(
-                                  context: context,
-                                  builder: (_) => AlertDialog(
-                                    backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                                    title: Text("Sửa tên nhóm", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-                                    content: TextField(controller: controller, autofocus: true),
-                                    actions: [
-                                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("Hủy")),
-                                      ElevatedButton(
-                                        onPressed: () => Navigator.pop(context, controller.text.trim()),
-                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
-                                        child: const Text("Lưu", style: TextStyle(color: Colors.white)),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (newName != null && newName.isNotEmpty && newName != group) {
-                                  setState(() {
-                                    _groups[index] = newName;
-                                    if (_selectedGroup == group) _selectedGroup = newName;
-                                  });
-                                  final prefs = await SharedPreferences.getInstance();
-                                  await prefs.setStringList('groups_${widget.classData['name']}', _groups);
-                                  _loadAnnouncements();
-                                }
-                              } else if (value == 'delete') {
-                                if (_selectedGroup == group) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Không thể xóa nhóm đang chọn!")),
-                                  );
-                                  return;
-                                }
-                                setState(() => _groups.removeAt(index));
-                                final prefs = await SharedPreferences.getInstance();
-                                await prefs.setStringList('groups_${widget.classData['name']}', _groups);
-                                await prefs.remove('announcements_${widget.classData['name']}_$group');
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Đã xóa nhóm: $group")));
-                              }
-                              Navigator.pop(context);
-                              _showGroupSelector(context);
-                            },
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 12), Text("Chỉnh sửa")])),
-                              const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 20), SizedBox(width: 12), Text("Xóa", style: TextStyle(color: Colors.red))])),
-                            ],
-                          ),
-                          onTap: () {
-                            setState(() => _selectedGroup = group);
-                            _loadAnnouncements();
-                            Navigator.pop(context);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  // Nút tạo nhóm mới
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        final controller = TextEditingController();
-                        final name = await showDialog<String>(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                            title: const Text("Tạo nhóm mới"),
-                            content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(hintText: "Tên nhóm")),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context), child: const Text("Hủy")),
-                              ElevatedButton(
-                                onPressed: () => Navigator.pop(context, controller.text.trim()),
-                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6E48AA)),
-                                child: const Text("Tạo", style: TextStyle(color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (name != null && name.isNotEmpty && !_groups.contains(name)) {
-                          setState(() {
-                            _groups.add(name);
-                            _selectedGroup = name;
-                          });
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setStringList('groups_${widget.classData['name']}', _groups);
-                          _loadAnnouncements();
-                        }
-                      },
-                      icon: const Icon(Icons.add_circle_outline, size: 26),
-                      label: const Text("Tạo nhóm mới", style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6E48AA),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                        elevation: 10,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-      ),
-    );
   }
 
   @override
@@ -372,48 +114,6 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
               ),
             ),
             const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () => _showGroupSelector(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: _groups.isEmpty
-                        ? [Colors.orange.withOpacity(0.4), Colors.red.withOpacity(0.3)]
-                        : [Colors.white.withOpacity(0.3), Colors.white.withOpacity(0.15)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: _groups.isEmpty ? Colors.orange : Colors.white.withOpacity(0.7),
-                    width: 1.8,
-                  ),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4))],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _groups.isEmpty ? Icons.warning_amber_rounded : Icons.groups_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _groups.isEmpty ? "Chưa có nhóm" : _selectedGroup,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 22),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
 

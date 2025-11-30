@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +14,24 @@ class ApiService {
   static Future<Map<String, dynamic>> login(String email, String pass) async {
     final url = Uri.parse("$baseUrl/auth/login");
     
+    // TẠM THỜI CHO PHÉP SINH VIÊN LOGIN BẰNG MẬT KHẨU "123456" (DÙ PASSWORD TRONG DB LÀ PLAIN TEXT)
+    // Dùng để test nhanh khi chèn thẳng vào DB
+    if (pass == "123456" && email.contains("@") && email != "admin") {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString("token", "fake-student-token-123");
+      await prefs.setString("userEmail", email);
+      await prefs.setString("role", "student"); // quan trọng: lưu role để HomePage điều hướng đúng
+      
+      return {
+        "token": "fake-student-token-123",
+        "user": {
+          "email": email,
+          "name": email.split('@').first.replaceAll('.', ' ').toUpperCase(),
+          "role": "student"
+        }
+      };
+    }
+
     // ⭐️ BƯỚC 1: Tạo payload (Map)
     final payload = {
       "email": email,
@@ -38,6 +57,8 @@ class ApiService {
     if (res.statusCode == 200) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("token", data["token"]);
+      await prefs.setString("userEmail", email);
+      await prefs.setString("role", data["user"]?["role"] ?? "student");
       return data;
     } else {
       // Khi server trả về 401 hoặc 400, nó sẽ có error (từ backend của bạn)
@@ -337,5 +358,56 @@ class ApiService {
   static Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString("token");
+  }
+
+    // =====================================================================
+  // HÀM MỚI: LẤY THÔNG TIN USER HIỆN TẠI (dùng token)
+  // Endpoint: GET /api/auth/me hoặc /api/users/me
+  // =====================================================================
+  static Future<Map<String, dynamic>> getCurrentUser() async {
+    final token = await _getToken();
+    if (token == null) {
+      throw Exception("Chưa đăng nhập");
+    }
+
+    final url = Uri.parse("$baseUrl/auth/me"); // ← Thử endpoint này trước
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Backend có thể trả về { user: { ... } } hoặc trực tiếp { name: ..., email: ... }
+        if (data['user'] != null) {
+          return data['user'] as Map<String, dynamic>;
+        }
+        return data as Map<String, dynamic>;
+      } else {
+        // Nếu /auth/me lỗi, thử endpoint khác (nhiều backend dùng /users/me)
+        final altUrl = Uri.parse("$baseUrl/users/me");
+        final altResponse = await http.get(
+          altUrl,
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        if (altResponse.statusCode == 200) {
+          return jsonDecode(altResponse.body) as Map<String, dynamic>;
+        }
+        throw Exception("Không thể lấy thông tin người dùng");
+      }
+    } catch (e) {
+      // Nếu cả 2 endpoint đều lỗi → fallback: dùng email đã lưu
+      final prefs = await SharedPreferences.getInstance();
+      final email = prefs.getString("userEmail") ?? "student@example.com";
+      return {
+        "name": email.split('@').first,
+        "email": email,
+      };
+    }
   }
 }

@@ -22,7 +22,6 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
   int attempts = 1;
 
   String? selectedClassId;
-  String? selectedGroupId = 'all';
   List<Map<String, dynamic>> classes = <Map<String, dynamic>>[];
   // DANH SÁCH CÂU HỎI GIẢNG VIÊN TỰ TẠO
   List<Map<String, dynamic>> questions = [];
@@ -184,11 +183,6 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedClass = classes.firstWhere((c) => c['_id'] == selectedClassId, orElse: () => <String, dynamic>{});
-    final List<Map<String, dynamic>> groups = (selectedClass['groups'] as List?)
-        ?.map((e) => e as Map<String, dynamic>)
-        .toList() ?? [];
-
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.quiz != null ? "Chỉnh sửa Quiz" : "Tạo Quiz mới"),
@@ -220,31 +214,6 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
               onChanged: (v) => setState(() => selectedClassId = v),
             ),
             const SizedBox(height: 16),
-
-            DropdownButtonFormField<String>(
-              value: selectedGroupId,
-              hint: const Text("Toàn lớp"),
-              decoration: InputDecoration(
-                labelText: "Phát hành cho",
-                filled: true,
-                fillColor: _getFillColor(),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              items: [
-                const DropdownMenuItem<String>(value: 'all', child: Text('Toàn lớp')),
-                ...groups.map<DropdownMenuItem<String>>((g) {
-                  final String id = g['_id'] as String;
-                  final String name = g['name'] as String? ?? 'Nhóm không tên';
-                  return DropdownMenuItem<String>(
-                    value: id,
-                    child: Text(name),
-                  );
-                }).toList(),
-              ],
-              onChanged: (v) => setState(() => selectedGroupId = v),
-            ),
-            const SizedBox(height: 24),
-
             TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: "Tên Quiz *", border: OutlineInputBorder())),
             const SizedBox(height: 16),
 
@@ -328,10 +297,6 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
                     'name': _nameCtrl.text.trim(),
                     'classId': selectedClassId,
                     'className': classes.firstWhere((c) => c['_id'] == selectedClassId)['name'],
-                    'groupId': selectedGroupId == 'all' ? null : selectedGroupId,
-                    'groupName': selectedGroupId == 'all' 
-                        ? 'Toàn lớp' 
-                        : groups.firstWhere((g) => g['_id'] == selectedGroupId, orElse: () => {'name': 'Nhóm không tên'})['name'],
                     'openTime': openTime?.toIso8601String(),
                     'closeTime': closeTime?.toIso8601String(),
                     'duration': duration,
