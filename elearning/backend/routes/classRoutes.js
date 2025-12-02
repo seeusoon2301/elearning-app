@@ -131,7 +131,7 @@ const { inviteStudent } = require('../controllers/inviteStudentController');
 router.post('/:classId/invite', inviteStudent);
 
 // =========================================================================
-// 5. API LẤY DANH SÁCH SINH VIÊN TRONG LỚP (GET /api/admin/classes/students/:classId) (MỚI)
+// 5. API LẤY DANH SÁCH SINH VIÊN TRONG LỚP (GET /api/admin/classes/:classId/students) (MỚI)
 // =========================================================================
 router.get('/:classId/students', getStudentsInClass);
 
@@ -142,9 +142,9 @@ router.get('/:classId/students', getStudentsInClass);
 // Đảm bảo bạn đã import { createAnnouncement, getAnnouncementsByClass } ở đầu file
 // Endpoint: /api/classes/:classId/announcements
 
-// POST /api/classes/:classId/announcements - Tạo bảng tin
+// POST /api/admin/classes/:classId/announcements - Tạo bảng tin
 router.post('/:classId/announcements', createAnnouncement);
 
-// GET /api/classes/:classId/announcements - Lấy danh sách bảng tin
+// GET /api/admin/classes/:classId/announcements - Lấy danh sách bảng tin
 router.get('/:classId/announcements', getAnnouncementsByClass);
 module.exports = router;

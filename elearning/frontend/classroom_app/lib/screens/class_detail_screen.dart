@@ -26,6 +26,9 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   // Dữ liệu cho tab Stream
   List<String> _announcements = [];
   
+  // KEY DÙNG ĐỂ TRUY CẬP VÀO STATE CỦA WIDGET _StudentList
+  final GlobalKey<_StudentListState> _studentListKey = GlobalKey<_StudentListState>();
+
   @override
   void initState() {
     super.initState();
@@ -118,24 +121,30 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
         ),
 
         actions: [
-          // ⭐️ THÊM ICON MỜI HỌC VIÊN KHI Ở TAB "MỌI NGƯỜI" (index 2)
+          // ⭐️ CẬP NHẬT: THAY ICON MỜI HỌC VIÊN BẰNG ICONS.ADD
           if (_selectedIndex == 2) 
             Padding(
               padding: const EdgeInsets.only(right: 4),
               child: IconButton(
-                icon: const Icon(Icons.person_add, color: Colors.white, size: 28),
-                tooltip: 'Mời học viên',
-                onPressed: () {
-                  Navigator.push(
+                // ĐÃ THAY Icons.person_add thành Icons.add
+                icon: const Icon(Icons.add, color: Colors.white, size: 30),
+                tooltip: 'Mời học viên mới',
+                onPressed: () async {
+                  // Đẩy đến màn hình mời
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => InviteStudentScreen(
-                        // Truyền ID và Tên lớp để màn hình mời sử dụng
                         classId: widget.classData['_id']?.toString() ?? '',
                         className: widget.classData['name'] ?? 'Lớp học',
                       ),
                     ),
                   );
+
+                  // KHI QUAY LẠI MÀN HÌNH NÀY, làm mới danh sách sinh viên
+                  if (_selectedIndex == 2 && _studentListKey.currentState != null) {
+                    _studentListKey.currentState!._refreshStudents();
+                  }
                 },
               ),
             ),
@@ -217,6 +226,8 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
                       AssignmentsTab(iconColor: iconColor, textColor: textColor, hintColor: hintColor),
                       // SỬ DỤNG WIDGET _StudentList MỚI ĐỂ GỌI API
                       _StudentList(
+                        // GÁN KEY VÀO WIDGET _StudentList
+                        key: _studentListKey, 
                         classId: widget.classData['_id']?.toString() ?? '',
                         iconColor: iconColor,
                         textColor: textColor,
@@ -447,11 +458,12 @@ class _StudentList extends StatefulWidget {
   final String className;
 
   const _StudentList({
+    Key? key, // Cần có key để truy cập state
     required this.classId,
     required this.iconColor,
     required this.textColor,
     required this.className,
-  });
+  }) : super(key: key);
 
   @override
   State<_StudentList> createState() => _StudentListState();
@@ -478,6 +490,7 @@ class _StudentListState extends State<_StudentList> {
     return ApiService.fetchStudentsInClass(widget.classId);
   }
 
+  // HÀM LÀM MỚI DANH SÁCH SINH VIÊN
   void _refreshStudents() {
     setState(() {
       _studentsFuture = _fetchStudents();
@@ -568,7 +581,16 @@ class _StudentListState extends State<_StudentList> {
                         label: Text("Mời học viên", style: TextStyle(color: widget.iconColor, fontWeight: FontWeight.bold)),
                         style: OutlinedButton.styleFrom(side: BorderSide(color: widget.iconColor, width: 1.5)),
                         onPressed: () {
-                          // Không cần điều hướng ở đây, vì đã có nút mời ở AppBar
+                          // Thêm điều hướng tới InviteStudentScreen ở đây nếu người dùng nhấn nút này
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => InviteStudentScreen(
+                                classId: widget.classId,
+                                className: widget.className,
+                              ),
+                            ),
+                          );
                         },
                       ),
                     ],

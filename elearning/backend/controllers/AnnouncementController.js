@@ -54,7 +54,7 @@ exports.createAnnouncement = async (req, res) => {
 };
 
 // @desc    Lấy danh sách bảng tin của một lớp học
-// @route   GET /api/classes/:classId/announcements
+// @route   GET /api/admin/classes/:classId/announcements
 // @access  Public (Không có xác thực quyền)
 exports.getAnnouncementsByClass = async (req, res) => {
     // 🔑 Đã loại bỏ KIỂM TRA BẢO MẬT (req.user) theo yêu cầu đơn giản hóa
