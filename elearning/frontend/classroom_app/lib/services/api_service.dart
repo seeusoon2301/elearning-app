@@ -410,4 +410,43 @@ class ApiService {
       };
     }
   }
+
+ // === HÀM LẤY HEADER CHUẨN – KHÔNG LỖI, DÙNG ĐƯỢC Ở MỌI NƠI ===
+  static Future<Map<String, String>> _getHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('authToken') ?? '';
+
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  static Future<List<dynamic>> getStudentQuizzes({
+  required String studentEmail,
+  required String semesterName,
+}) async {
+  try {
+    final response = await http.get(
+      Uri.parse("$baseUrl/api/student/quizzes?email=$studentEmail&semester=$semesterName"),
+      headers: await _getHeaders(), // ĐÃ SỬA – KHÔNG LỖI NỮA!
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      // Backend có thể trả về {"quizzes": [...]} hoặc trực tiếp [...]
+      return data is List ? data : data['quizzes'] ?? [];
+    } else if (response.statusCode == 404) {
+      return []; // Không có quiz → trả rỗng, không lỗi
+    } else {
+      throw Exception("Lỗi server: ${response.statusCode}");
+    }
+  } catch (e) {
+    if (e is http.ClientException || e.toString().contains('Failed host lookup')) {
+      throw Exception("Không kết nối được đến server. Vui lòng kiểm tra mạng.");
+    }
+    throw Exception("Lỗi tải quiz: ${e.toString()}");
+  }
+}
 }

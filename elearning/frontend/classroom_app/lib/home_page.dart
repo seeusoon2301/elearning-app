@@ -2,8 +2,10 @@
 import 'dart:math';
 import 'package:classroom_app/student_drawer.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import 'providers/semester_provider.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -76,6 +78,42 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  void _showSemesterPicker(BuildContext context) {
+  final provider = Provider.of<SemesterProvider>(context, listen: false);
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text("Chọn học kỳ", style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...provider.list.map((semester) => ListTile(
+                  leading: Icon(
+                    semester.id == provider.current?.id ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: const Color(0xFF6E48AA),
+                  ),
+                  title: Text(semester.name),
+                  selected: semester.id == provider.current?.id,
+                  onTap: () async {
+                    provider.select(semester);
+                    Navigator.pop(ctx);
+                    // TỰ ĐỘNG LOAD LẠI LỚP THEO HỌC KỲ
+                    await _loadStudentData(); // Gọi lại API
+                  },
+                )),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -145,6 +183,51 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ),
 
           actions: [
+            // NÚT HỌC KỲ – GIỐNG HỆT INSTRUCTOR 100%
+            Consumer<SemesterProvider>(
+              builder: (context, semesterProvider, child) {
+                final current = semesterProvider.current ?? Semester(id: "", name: "Chưa chọn học kỳ");
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => _showSemesterPicker(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF6E48AA), Color(0xFF9D50BB)],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4)),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.school_rounded, color: Colors.white, size: 18),
+                              const SizedBox(width: 6),
+                              Text(
+                                current.name.length > 20 ? "${current.name.substring(0, 20)}..." : current.name,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
+            // AVATAR SINH VIÊN – GIỮ NGUYÊN
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Column(

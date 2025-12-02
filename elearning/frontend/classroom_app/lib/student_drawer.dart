@@ -1,4 +1,5 @@
 // lib/student_drawer.dart
+import 'package:classroom_app/screens/student_quiz_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -76,9 +77,13 @@ class StudentDrawer extends StatelessWidget {
                 ),
               );
             }),
-
-            _buildItem(context, Icons.assignment, "Bài tập"),
-            _buildItem(context, Icons.quiz, "Quizzes"),
+            _buildItem(context, Icons.quiz_rounded, "Quizzes", onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const StudentQuizListScreen()),
+              );
+            }),
             _buildItem(context, Icons.calendar_today, "Lịch"),
             _buildItem(context, Icons.notifications, "Thông báo"),
 
