@@ -22,6 +22,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   String studentName = "Sinh viên";
   String studentEmail = "";
   bool isLoading = true;
+  String? _studentId;
 
   // Danh sách màu ngẫu nhiên nhưng đẹp, dùng để tô lớp học
   final List<Color> classColors = [
@@ -45,22 +46,31 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _loadStudentData() async {
     final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString('studentId');
+    final name = prefs.getString('studentName') ?? "Sinh viên";
     final email = prefs.getString("userEmail") ?? "";
 
-    if (email.isEmpty || email == "admin") {
-      setState(() => isLoading = false);
-      return;
+    if (id == null) {
+        setState(() { isLoading = false; });
+        return; 
     }
 
-    setState(() => isLoading = true);
+    setState(() {
+      _studentId = id;
+      studentName = name;
+      studentEmail = email;
+    });
+    final semesterProvider = Provider.of<SemesterProvider>(context, listen: false);
+    final semesterId = semesterProvider.current?.id;
 
     try {
       // LOAD THẬT TỪ API – CÁC LỚP MÀ SINH VIÊN NÀY ĐÃ ĐƯỢC MỜI/THAM GIA
-      final List<dynamic> courses = await ApiService.getStudentCourses(email);
+      final List<dynamic> courses = await ApiService.getStudentCourses(
+        _studentId!,
+        semesterId: semesterId, // <--- ĐÃ THÊM THAM SỐ
+      );
 
       setState(() {
-        studentEmail = email;
-        studentName = email.split('@').first.replaceAll('.', ' ').split(' ').map((s) => s.isEmpty ? '' : s[0].toUpperCase() + s.substring(1)).join(' ');
         enrolledClasses = courses;
         isLoading = false;
       });

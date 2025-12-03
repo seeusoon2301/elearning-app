@@ -14,40 +14,20 @@ class ApiService {
   static Future<Map<String, dynamic>> login(String email, String pass) async {
     final url = Uri.parse("$baseUrl/auth/login");
     
-    // TẠM THỜI CHO PHÉP SINH VIÊN LOGIN BẰNG MẬT KHẨU "123456" (DÙ PASSWORD TRONG DB LÀ PLAIN TEXT)
-    // Dùng để test nhanh khi chèn thẳng vào DB
-    if (pass == "123456" && email.contains("@") && email != "admin") {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("token", "fake-student-token-123");
-      await prefs.setString("userEmail", email);
-      await prefs.setString("role", "student"); // quan trọng: lưu role để HomePage điều hướng đúng
-      
-      return {
-        "token": "fake-student-token-123",
-        "user": {
-          "email": email,
-          "name": email.split('@').first.replaceAll('.', ' ').toUpperCase(),
-          "role": "student"
-        }
-      };
-    }
-
-    // ⭐️ BƯỚC 1: Tạo payload (Map)
     final payload = {
       "email": email,
       "password": pass,
     };
     
-    // ⭐️ BƯỚC 2 & 3: Thêm Header và JSON Encode Body
     final res = await http.post(
       url, 
       headers: {
-        'Content-Type': 'application/json', // 👈 BẮT BUỘC
+        'Content-Type': 'application/json',
       },
-      body: json.encode(payload), // 👈 BẮT BUỘC
+      body: json.encode(payload),
     );
 
-    // Nếu response rỗng, bạn nên kiểm tra xem server có gửi gì không
+    // Xử lý phản hồi rỗng
     if (res.body.isEmpty) {
         throw Exception("Server không phản hồi. Vui lòng kiểm tra kết nối.");
     }
@@ -56,13 +36,37 @@ class ApiService {
 
     if (res.statusCode == 200) {
       final prefs = await SharedPreferences.getInstance();
+      final userData = data["user"]; // Lấy object 'user'
+
+      // 1. LƯU THÔNG TIN CHUNG (Áp dụng cho cả Admin và Student)
       await prefs.setString("token", data["token"]);
-      await prefs.setString("userEmail", email);
-      await prefs.setString("role", data["user"]?["role"] ?? "student");
+      
+      // Lấy role từ API. Dùng 'student' làm mặc định nếu không có
+      final role = userData?["role"] ?? "student"; 
+      await prefs.setString("role", role); 
+
+      // 2. LƯU THÔNG TIN ĐẶC THÙ CHO SINH VIÊN (Dành cho home_page)
+      if (role == "student" && userData != null) {
+          final studentId = userData["id"];
+          final studentName = userData["name"];
+          final studentEmail = userData["email"]; // Lấy email từ response
+          
+          // ⭐️ LƯU CÁC KEY MÀ home_page.dart ĐANG SỬ DỤNG
+          await prefs.setString('studentId', studentId); 
+          await prefs.setString('studentName', studentName); 
+          await prefs.setString('studentEmail', studentEmail); 
+
+          print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role, Student ID: $studentId');
+      } else if (role == "admin") {
+           // Có thể lưu adminId, adminName nếu cần, nhưng hiện tại chỉ cần token và role
+           print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role');
+      }
+      
       return data;
+      
     } else {
-      // Khi server trả về 401 hoặc 400, nó sẽ có error (từ backend của bạn)
-      throw data["error"] ?? "Lỗi đăng nhập không xác định.";
+      // Khi server trả về lỗi (401, 400, v.v.)
+      throw Exception(data["error"] ?? data["message"] ?? "Lỗi đăng nhập không xác định.");
     }
   }
 
@@ -84,14 +88,40 @@ class ApiService {
     return prefs.getString("token") != null;
   }
 
-  static Future<List> getStudentCourses(String email) async {
-    // ... (code getStudentCourses giữ nguyên)
-    final url = Uri.parse("$baseUrl/courses/student/$email");
-    final res = await http.get(url);
+  static Future<List> getStudentCourses(String studentId, {String? semesterId}) async {
+    final Map<String, dynamic> queryParams = {};
+    if (semesterId != null && semesterId.isNotEmpty) {
+      // URL query: /student/:id/classes?semesterId=...
+      queryParams['semesterId'] = semesterId; 
+    }
+    
+    // Sử dụng .replace để xây dựng URI với query parameters
+    final uri = Uri.parse("$baseUrl/student/$studentId/classes").replace(
+      queryParameters: queryParams.isNotEmpty 
+        ? queryParams.map((key, value) => MapEntry(key, value.toString())) 
+        : null
+    );
+    
+    final res = await http.get(uri, headers: await _getHeaders()); // Sử dụng 'uri' đã có params
+
     if (res.statusCode == 200) {
-      return jsonDecode(res.body);
+      // ⭐️ BƯỚC 2: Giải mã JSON (Logic giữ nguyên)
+      final responseBody = jsonDecode(res.body);
+
+      // ⭐️ BƯỚC 3: Trích xuất mảng lớp học từ key "data" (Logic giữ nguyên)
+      if (responseBody['success'] == true && responseBody['data'] is List) {
+        return List<Map<String, dynamic>>.from(
+          responseBody['data'].map((item) => item as Map<String, dynamic>)
+        );
+      } else {
+        return [];
+      }
+      
     } else {
-      throw Exception("Failed to fetch courses");
+      // ... (xử lý lỗi giữ nguyên)
+      final errorData = jsonDecode(res.body);
+      final errorMessage = errorData['message'] ?? 'Failed to fetch courses (HTTP ${res.statusCode})';
+      throw Exception(errorMessage);
     }
   }
 
@@ -313,42 +343,29 @@ class ApiService {
   // GET /api/admin/classes/students/:classId
   // =====================================================================
   static Future<List<Map<String, dynamic>>> fetchStudentsInClass(String classId) async {
-    final url = Uri.parse("$baseUrl/admin/classes/$classId/students");
-    final token = await _getToken();
+    // Thay đổi endpoint nếu cần thiết, tôi giả định là /api/admin/classes/:classId/students
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/students"); 
+    
+    final res = await http.get(
+      url,
+      headers: await _getHeaders(),
+    );
 
-    try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          // Gửi token xác thực nếu có
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final responseBody = jsonDecode(response.body);
-
-        // Kiểm tra cấu trúc phản hồi thành công
-        if (responseBody['success'] == true && responseBody['data'] is List) {
-          // Trả về danh sách sinh viên
-          return (responseBody['data'] as List)
-              .map((item) => item as Map<String, dynamic>)
-              .toList();
-        } else {
-          // Trường hợp API trả về 200 nhưng success=false hoặc data không hợp lệ
-          return []; 
-        }
-      } else {
-        // Xử lý lỗi HTTP status (ví dụ: 401 Unauthorized, 404 Not Found)
-        final responseBody = jsonDecode(response.body);
-        final errorMessage = responseBody['message'] ?? 'Thất bại khi tải sinh viên. Mã lỗi: ${response.statusCode}';
-        throw Exception(errorMessage);
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      
+      // ⭐️ FIX LỖI: Kiểm tra key 'data' theo cấu trúc backend đã cung cấp
+      if (data['data'] is List) {
+        print('DEBUG (Students API): Đã tìm thấy ${data['data'].length} sinh viên trong key "data".');
+        return List<Map<String, dynamic>>.from(data['data'].map((item) => item as Map<String, dynamic>));
       }
-    } catch (e) {
-      // Xử lý lỗi kết nối mạng, timeout, hoặc lỗi định dạng JSON
-      print('Lỗi API fetchStudentsInClass: $e');
-      throw Exception('Lỗi kết nối hoặc xử lý dữ liệu: $e');
+
+      print('DEBUG (Students API): Phản hồi API không chứa danh sách sinh viên hợp lệ trong key "data".');
+      return [];
+    } else {
+      final data = jsonDecode(res.body);
+      final errorMessage = data['message'] ?? data['error'] ?? 'Lỗi không xác định khi tải danh sách sinh viên.';
+      throw Exception(errorMessage);
     }
   }
 
@@ -421,6 +438,65 @@ class ApiService {
       'Accept': 'application/json',
       if (token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
+  }
+
+  // =====================================================================
+  // HÀM ANNOUNCEMENT MỚI
+  // =====================================================================
+
+  // ⭐️ 1. HÀM TẠO BẢNG TIN (POST)
+  static Future<void> createAnnouncement(String classId, String content) async {
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/announcements");
+    
+    final payload = json.encode({
+      "content": content,
+    });
+    
+    final res = await http.post(
+      url,
+      headers: await _getHeaders(), 
+      body: payload,
+    );
+
+    if (res.statusCode != 201) { // 201 Created là mã thành công phổ biến cho POST
+      final data = jsonDecode(res.body);
+      final errorMessage = data['message'] ?? data['error'] ?? 'Lỗi không xác định khi tạo thông báo.';
+      throw Exception(errorMessage);
+    }
+    // Thành công
+  }
+
+  // ⭐️ 2. HÀM LẤY DANH SÁCH BẢNG TIN (GET) - ĐÃ FIX LỖI PARSING
+  static Future<List<Map<String, dynamic>>> fetchAnnouncementsInClass(String classId) async {
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/announcements");
+    
+    final res = await http.get(
+      url,
+      headers: await _getHeaders(),
+    );
+
+    if (res.statusCode == 200) {
+      final data = jsonDecode(res.body);
+      
+      // ⭐️ FIX LỖI: Kiểm tra key 'data' theo cấu trúc backend đã cung cấp
+      if (data['data'] is List) {
+        print('DEBUG: Đã tìm thấy ${data['data'].length} bảng tin trong key "data".');
+        return List<Map<String, dynamic>>.from(data['data'].map((item) => item as Map<String, dynamic>));
+      }
+      
+      // Giữ lại logic cũ phòng trường hợp backend thay đổi:
+      if (data['announcements'] is List) {
+        print('DEBUG: Đã tìm thấy ${data['announcements'].length} bảng tin trong key "announcements".');
+        return List<Map<String, dynamic>>.from(data['announcements'].map((item) => item as Map<String, dynamic>));
+      }
+
+      print('DEBUG: Phản hồi API không chứa danh sách bảng tin hợp lệ trong key "data" hoặc "announcements".');
+      return [];
+    } else {
+      final data = jsonDecode(res.body);
+      final errorMessage = data['message'] ?? data['error'] ?? 'Lỗi không xác định khi tải bảng tin.';
+      throw Exception(errorMessage);
+    }
   }
 
   static Future<List<dynamic>> getStudentQuizzes({
