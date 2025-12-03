@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../signin.dart';
 import 'role_provider.dart';
 import 'home_page.dart';
-import 'screens/student_class_detail_screen.dart';
 
 class StudentDrawer extends StatelessWidget {
   const StudentDrawer({super.key});
@@ -65,17 +64,6 @@ class StudentDrawer extends StatelessWidget {
             _buildItem(context, Icons.home, "Trang chủ", selected: true, onTap: () {
               Navigator.pop(context);
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
-            }),
-
-            _buildItem(context, Icons.class_, "Lớp học", onTap: () {
-              Navigator.pop(context);
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => StudentClassDetailScreen(classData: {},),
-                ),
-              );
             }),
             _buildItem(context, Icons.quiz_rounded, "Quizzes", onTap: () {
               Navigator.pop(context);

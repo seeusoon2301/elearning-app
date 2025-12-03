@@ -1,6 +1,7 @@
 // lib/screens/home_page.dart - STUDENT HOMEPAGE - LOAD THẬT TỪ API, KHÔNG GÁN CỨNG, ĐẸP NHƯ GOOGLE CLASSROOM
 import 'dart:convert';
 import 'dart:math';
+import 'package:classroom_app/screens/student_class_detail_screen.dart';
 import 'package:classroom_app/screens/student_profile_screen.dart';
 import 'package:classroom_app/student_drawer.dart';
 import 'package:flutter/material.dart';
@@ -376,88 +377,108 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   // GRID LỚP HỌC – MÀU NGẪU NHIÊN ĐẸP
   Widget _buildClassGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(20),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 1.1,
-        crossAxisSpacing: 18,
-        mainAxisSpacing: 18,
-      ),
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 80), // Để chỗ cho FAB
       itemCount: enrolledClasses.length,
-      itemBuilder: (ctx, index) {
+      itemBuilder: (context, index) {
         final cls = enrolledClasses[index];
         final color = classColors[index % classColors.length];
-        return _buildClassTile(cls, color, index); // <-- truyền index vào
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _buildModernClassCard(cls, color),
+        );
       },
     );
   }
 
-  // CARD LỚP HỌC SIÊU ĐẸP
-  Widget _buildClassTile(Map<String, dynamic> cls, Color baseColor, int index) {
-  return GestureDetector(
-    onTap: () {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Đang mở: ${cls['name'] ?? 'Lớp học'}"), backgroundColor: baseColor),
-      );
-    },
-    child: Hero(
-      tag: "class-${cls['id'] ?? index}", // <-- DÙNG index THAY VÌ i
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [baseColor, baseColor.withOpacity(0.85)],
+  Widget _buildModernClassCard(Map<String, dynamic> cls, Color baseColor) {
+    final String className = cls['name'] ?? "Lớp không tên";
+    final String instructorName = cls['instructorName'] ?? cls['instructor'] ?? "Giảng viên";
+
+    return Card(
+      elevation: 10,
+      shadowColor: baseColor.withOpacity(0.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () {
+          // NHẢY SANG TRANG CHI TIẾT LỚP - TRUYỀN ĐẦY ĐỦ DỮ LIỆU
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => StudentClassDetailScreen(classData: cls),
+            ),
+          );
+        },
+        child: Container(
+          height: 180,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [baseColor, baseColor.withOpacity(0.85)],
+            ),
           ),
-          boxShadow: [
-            BoxShadow(color: baseColor.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8)),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Icon(Icons.auto_stories, size: 100, color: Colors.white.withOpacity(0.1)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.white.withOpacity(0.25),
-                    child: const Icon(Icons.menu_book, color: Colors.white, size: 20),
-                  ),
-                  const Spacer(),
-                  Text(
-                    cls['name'] ?? "Lớp không tên",
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    cls['code'] ?? "",
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    cls['instructorName'] ?? cls['instructor'] ?? "Giảng viên",
-                    style: TextStyle(color: Colors.white60, fontSize: 13),
-                  ),
-                ],
+          child: Stack(
+            children: [
+              // Họa tiết nền mờ
+              Positioned(
+                top: -40,
+                right: -40,
+                child: Opacity(
+                  opacity: 0.12,
+                  child: Icon(Icons.school_rounded, size: 220, color: Colors.white),
+                ),
               ),
-            ),
-          ],
+
+              // Nội dung chính
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Tên lớp
+                    Text(
+                      className,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: Colors.white.withOpacity(0.3),
+                          child: Text(
+                            instructorName.isEmpty ? "G" : instructorName[0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            instructorName,
+                            style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // Dialog nhập mã lớp (có thể làm sau)
   void _showJoinClassDialog() {
