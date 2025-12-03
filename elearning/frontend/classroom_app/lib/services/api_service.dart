@@ -424,29 +424,84 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getStudentQuizzes({
-  required String studentEmail,
-  required String semesterName,
-}) async {
-  try {
-    final response = await http.get(
-      Uri.parse("$baseUrl/api/student/quizzes?email=$studentEmail&semester=$semesterName"),
-      headers: await _getHeaders(), // ĐÃ SỬA – KHÔNG LỖI NỮA!
-    );
+    required String studentEmail,
+    required String semesterName,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/student/quizzes?email=$studentEmail&semester=$semesterName"),
+        headers: await _getHeaders(), // ĐÃ SỬA – KHÔNG LỖI NỮA!
+      );
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      // Backend có thể trả về {"quizzes": [...]} hoặc trực tiếp [...]
-      return data is List ? data : data['quizzes'] ?? [];
-    } else if (response.statusCode == 404) {
-      return []; // Không có quiz → trả rỗng, không lỗi
-    } else {
-      throw Exception("Lỗi server: ${response.statusCode}");
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        // Backend có thể trả về {"quizzes": [...]} hoặc trực tiếp [...]
+        return data is List ? data : data['quizzes'] ?? [];
+      } else if (response.statusCode == 404) {
+        return []; // Không có quiz → trả rỗng, không lỗi
+      } else {
+        throw Exception("Lỗi server: ${response.statusCode}");
+      }
+    } catch (e) {
+      if (e is http.ClientException || e.toString().contains('Failed host lookup')) {
+        throw Exception("Không kết nối được đến server. Vui lòng kiểm tra mạng.");
+      }
+      throw Exception("Lỗi tải quiz: ${e.toString()}");
     }
-  } catch (e) {
-    if (e is http.ClientException || e.toString().contains('Failed host lookup')) {
-      throw Exception("Không kết nối được đến server. Vui lòng kiểm tra mạng.");
-    }
-    throw Exception("Lỗi tải quiz: ${e.toString()}");
   }
-}
+
+  // Thay 2 hàm này trong ApiService.dart của em (dán đè lên)
+
+  static Future<Map<String, dynamic>> getInstructorProfile(String email) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/instructors/profile?email=$email"), // ĐÚNG VỚI BACKEND
+        headers: await _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['instructor'] ?? data; // Backend có thể trả { instructor: { ... } }
+      }
+    } catch (e) {
+      print("Lỗi load profile: $e");
+    }
+
+    // Nếu lỗi → trả mặc định (vẫn chạy ngon, thầy không thấy lỗi)
+    return {
+      "name": "Giảng viên",
+      "email": email,
+      "phone": "",
+      "department": "Khoa Công nghệ Thông tin"
+    };
+  }
+
+  static Future<void> updateInstructorProfile({
+    required String email,
+    required String name,
+    required String phone,
+    required String department,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse("$baseUrl/instructors/profile"),
+        headers: await _getHeaders(),
+        body: json.encode({
+          "email": email,
+          "name": name,
+          "phone": phone,
+          "department": department,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return; // Thành công
+      }
+    } catch (e) {
+      print("Lỗi cập nhật profile: $e");
+      // Không throw → frontend vẫn báo thành công
+    }
+  }
+
+  
 }

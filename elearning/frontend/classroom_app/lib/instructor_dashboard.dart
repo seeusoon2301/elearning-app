@@ -1,4 +1,8 @@
 // lib/instructor_dashboard.dart
+import 'dart:convert';
+import 'dart:io';
+import 'package:classroom_app/screens/instructor_profile_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import './screens/quiz_list_screen.dart';
 import 'dart:math';
 import 'package:classroom_app/providers/semester_provider.dart';
@@ -365,26 +369,46 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
             },
           ),
 
-          // Avatar GV (giữ nguyên)
+          // ĐOẠN NÀY DÁN VÀO PHẦN actions: CỦA AppBar TRONG INSTRUCTOR DASHBOARD
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 15, offset: const Offset(0, 6))],
-                  ),
-                  child: const CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.white,
-                    child: CircleAvatar(radius: 22, backgroundColor: Color(0xFF6E48AA), child: Text("GV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18))),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text("Giảng viên", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-              ],
+            child: InkWell(
+              onTap: () async {
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => const InstructorProfileScreen()));
+                if (mounted) setState(() {});
+              },
+              child: FutureBuilder<Map<String, String>>(
+                future: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  final name = prefs.getString('instructorName')?.trim();
+                  final avatar64 = prefs.getString('instructorAvatarBase64') ?? '';
+                  return {'name': name?.isNotEmpty == true ? name! : "Giảng viên", 'avatar': avatar64};
+                }(),
+                builder: (context, snapshot) {
+                  final data = snapshot.data ?? {'name': "Giảng viên", 'avatar': ''};
+                  final name = data['name']!;
+                  final avatar64 = data['avatar']!;
+                  final hasAvatar = avatar64.isNotEmpty;
+
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: Colors.white,
+                        child: CircleAvatar(
+                          radius: 22,
+                          backgroundColor: const Color(0xFF6E48AA),
+                          backgroundImage: hasAvatar ? MemoryImage(base64Decode(avatar64)) : null,
+                          child: hasAvatar ? null : Text(name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(name, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ],
