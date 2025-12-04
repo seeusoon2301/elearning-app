@@ -44,6 +44,7 @@ dependencies:
   intl: ^0.19.0                        # Format ngày giờ đẹp (15/11/2025)
   flutter_local_notifications: ^17.2.2 # Thông báo trong app (deadline, nộp bài…)
   image_picker: ^1.2.1
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
