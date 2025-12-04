@@ -206,6 +206,18 @@ class _SignInState extends State<SignIn> with TickerProviderStateMixin {
       else {
         final data = await ApiService.login(_emailCtrl.text.trim(), _passCtrl.text);
         final prefs = await SharedPreferences.getInstance();
+        final userData = data["user"];
+        final userRole = data["role"];
+        if (userData != null && userData["_id"] != null && userRole == 'student') {
+          final studentId = userData["_id"];
+          final studentName = userData["name"] as String?;
+          // 🔑 Lưu ID của người dùng vào key 'userId'
+          await prefs.setString('userId', userData["_id"]); 
+          if (studentName != null) {
+            await prefs.setString('studentName', studentName);
+        }
+          print("Lưu Student ID thành công: ${studentId}");
+      }
         await prefs.setString("userEmail", data['user']['email']);
         if (data['token'] != null) await prefs.setString("token", data['token']);
 

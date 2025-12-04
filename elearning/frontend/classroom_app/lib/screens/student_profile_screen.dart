@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 
 class StudentProfileScreen extends StatefulWidget {
   const StudentProfileScreen({super.key});
@@ -15,7 +16,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   final _nameController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool isSaving = false;
-
+  String? _studentId;
+  String? _studentEmail;
   @override
   void initState() {
     super.initState();
@@ -23,25 +25,67 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedName = prefs.getString('studentName') ?? '';
-    setState(() {
-      _nameController.text = savedName;
-    });
+    // ⭐️ SỬ DỤNG HÀM MỚI TẠO TỪ ApiService
+    final studentInfo = await ApiService.getStudentInfoFromPrefs(); 
+
+    if (studentInfo != null) {
+        setState(() {
+            _studentId = studentInfo.id; // Lấy ID
+            _studentEmail = studentInfo.email; // Lấy Email
+            _nameController.text = studentInfo.name; // Lấy Tên
+            print("Profile Screen: Loaded Student ID: $_studentId");
+        });
+    } else {
+        // Xử lý trường hợp không tìm thấy thông tin
+        setState(() {
+            _studentId = 'Không có ID';
+            _studentEmail = 'Không có Email';
+        });
+        print("Profile Screen: Không tìm thấy thông tin sinh viên trong SharedPreferences.");
+    }
   }
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    if (_studentId == null) {
+        if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Lỗi: Không tìm thấy Student ID."), backgroundColor: Colors.redAccent));
+        }
+        return;
+    }
+    
     setState(() => isSaving = true);
+    
+    final newName = _nameController.text.trim();
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('studentName', _nameController.text.trim());
+    try {
+      // 1. GỌI API ĐỂ CẬP NHẬT TÊN VÀO DATABASE
+      await ApiService.updateStudentProfile(_studentId!, newName);
+      
+      // 2. LƯU TÊN MỚI VÀO SHARED PREFERENCES sau khi DB cập nhật thành công
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('studentName', newName); 
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Đã lưu thông tin!"), backgroundColor: Colors.green),
-    );
-    Navigator.pop(context);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Đã cập nhật tên thành công!"), backgroundColor: Colors.green),
+      );
+    } catch (e) {
+      print("Lỗi khi cập nhật tên: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Cập nhật thất bại: ${e.toString().split(':').last}"), 
+          backgroundColor: Colors.redAccent
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isSaving = false);
+      }
+    }
   }
 
   Future<void> _pickAvatar() async {

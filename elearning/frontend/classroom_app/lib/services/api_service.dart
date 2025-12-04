@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+
+class StudentInfo {
+  final String id;
+  final String email;
+  final String name;
+
+  StudentInfo({required this.id, required this.email, required this.name});
+}
+
 class ApiService {
   // Đảm bảo baseUrl đúng cho môi trường của bạn (ví dụ: http://10.0.2.2:3000/api)
   static const baseUrl = "http://localhost:5000/api"; 
@@ -56,7 +65,7 @@ class ApiService {
           await prefs.setString('studentName', studentName); 
           await prefs.setString('studentEmail', studentEmail); 
 
-          print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role, Student ID: $studentId');
+          print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role, Student ID: $studentId, Name: $studentName, Email: $studentEmail');
       } else if (role == "admin") {
            // Có thể lưu adminId, adminName nếu cần, nhưng hiện tại chỉ cần token và role
            print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role');
@@ -356,11 +365,11 @@ class ApiService {
       
       // ⭐️ FIX LỖI: Kiểm tra key 'data' theo cấu trúc backend đã cung cấp
       if (data['data'] is List) {
-        print('DEBUG (Students API): Đã tìm thấy ${data['data'].length} sinh viên trong key "data".');
+        //print('DEBUG (Students API): Đã tìm thấy ${data['data'].length} sinh viên trong key "data".');
         return List<Map<String, dynamic>>.from(data['data'].map((item) => item as Map<String, dynamic>));
       }
 
-      print('DEBUG (Students API): Phản hồi API không chứa danh sách sinh viên hợp lệ trong key "data".');
+      //print('DEBUG (Students API): Phản hồi API không chứa danh sách sinh viên hợp lệ trong key "data".');
       return [];
     } else {
       final data = jsonDecode(res.body);
@@ -579,5 +588,48 @@ class ApiService {
     }
   }
 
-  
+  static Future<void> updateStudentProfile(String studentId, String newName) async {
+    final url = Uri.parse("$baseUrl/student/$studentId/profile"); 
+    
+    final payload = {
+      "name": newName,
+    };
+    
+    final res = await http.put(
+      url, 
+      headers: await _getHeaders(), // Giả định _getHeaders() đã có
+      body: json.encode(payload),
+    );
+
+    if (res.statusCode != 200) {
+      final data = jsonDecode(res.body);
+      final errorMessage = data['message'] ?? 'Lỗi không xác định khi cập nhật profile.';
+      throw Exception(errorMessage);
+    }
+    
+    // Nếu thành công (200 OK), hàm kết thúc
+  }
+
+  static Future<String?> getLoggedInStudentId() async {
+      final prefs = await SharedPreferences.getInstance();
+      // Giả định bạn lưu ID của user vào key 'userId' sau khi login thành công
+      return prefs.getString('userId'); 
+  }
+
+  static Future<StudentInfo?> getStudentInfoFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Lấy thông tin đã lưu trong hàm login
+    final id = prefs.getString('studentId');
+    final name = prefs.getString('studentName');
+    final email = prefs.getString('studentEmail');
+
+    if (id != null && name != null && email != null) {
+      // Trả về đối tượng StudentInfo nếu tất cả thông tin đều tồn tại
+      return StudentInfo(id: id, email: email, name: name);
+    }
+    
+    // Trả về null nếu thiếu bất kỳ thông tin nào
+    return null; 
+  }
 }

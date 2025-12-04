@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../student_drawer.dart'; // ĐÃ ĐỔI THÀNH STUDENT DRAWER
+import '../services/api_service.dart';
+import 'package:intl/intl.dart';
 
 class StudentClassDetailScreen extends StatefulWidget {
   final Map<String, dynamic> classData;
@@ -20,7 +22,12 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
   int _selectedIndex = 0;
 
   // Dữ liệu thông báo – dùng SharedPreferences để lưu tạm (giống giảng viên)
-  List<String> _announcements = [];
+  List<Map<String, dynamic>> _announcements = [];
+  bool _isLoading = true;
+  String? _error;
+
+  List<Map<String, dynamic>> _members = [];
+  String? _loggedInStudentId;
 
   @override
   void initState() {
@@ -29,17 +36,92 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
 
     _loadAnnouncements();
+    _loadMembers();
+  }
+
+  String _formatTime(String isoString) {
+    try {
+      final dateTime = DateTime.parse(isoString).toLocal();
+      // Nếu thời gian cách đây ít phút, hiển thị 'Vừa xong'
+      if (DateTime.now().difference(dateTime).inMinutes < 5) {
+        return 'Vừa xong';
+      }
+      // Định dạng ngày giờ cụ thể (ví dụ: 10:30 AM, 04/12/2025)
+      return DateFormat('hh:mm a, dd/MM/yyyy').format(dateTime); 
+    } catch (e) {
+      //print('Lỗi định dạng thời gian: $e');
+      return 'Không rõ thời gian';
+    }
   }
 
   Future<void> _loadAnnouncements() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'student_announcements_${widget.classData['_id'] ?? widget.classData['name']}';
-    final saved = prefs.getStringList(key) ?? [
-      "Chào mừng đến với lớp học!",
-      "Tuần này có Quiz 1 vào thứ 4",
-      "Bài tập 1 hạn nộp: 20/03/2025"
-    ];
-    if (mounted) setState(() => _announcements = saved);
+    final classId = widget.classData['_id']; 
+    if (classId == null) {
+      if(mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = "Không có ID lớp học.";
+        });
+      }
+      return;
+    }
+
+    try {
+      // 2. Gọi API để lấy danh sách thông báo (List<Map<String, dynamic>>)
+      final announcementsMapList = await ApiService.fetchAnnouncementsInClass(classId);
+
+      // 3. Chuyển đổi List<Map> thành List<String> (chỉ lấy nội dung thông báo)
+      final announcementsContent = announcementsMapList.map<String>((announcement) {
+        // Giả định backend trả về trường 'content' cho nội dung thông báo
+        return announcement['content'] ?? 'Thông báo không có nội dung.'; 
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _announcements = announcementsMapList;
+          _isLoading = false;
+          _error = null;
+        });
+      }
+
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          // Hiển thị thông báo lỗi chi tiết hơn nếu có
+          _error = "Lỗi tải thông báo: $e"; 
+          //_announcements = ["Lỗi tải thông báo: Vui lòng kiểm tra kết nối."]; 
+        });
+      }
+      print('Error loading announcements: $e');
+    }
+  }
+
+  Future<void> _loadMembers() async {
+    // 1. Lấy classId và ID người dùng
+    final classId = widget.classData['_id'];
+    if (classId == null) return;
+    
+    final userId = await ApiService.getLoggedInStudentId();
+
+    try {
+      // 2. Gọi API lấy danh sách sinh viên
+      final students = await ApiService.fetchStudentsInClass(classId);
+
+      if (mounted) {
+        setState(() {
+          _members = students;
+          _loggedInStudentId = userId;
+          // Dùng chung _isLoading cho cả màn hình chi tiết
+          // _isLoading = false; // Nếu bạn muốn tách loading, hãy thêm biến riêng
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        print('Lỗi tải danh sách thành viên: $e');
+        // Có thể hiện error message trên tab Mọi người nếu cần
+      }
+    }
   }
 
   @override
@@ -170,9 +252,30 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     child: <Widget>[
-                      _StreamTab(announcements: _announcements),
+                      if (_isLoading) 
+                        const Center(child: CircularProgressIndicator())
+                      else if (_error != null)
+                        Center(
+                          key: const ValueKey('ErrorTab'),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 16)),
+                          )
+                        )
+                      else
+                        _StreamTab(
+                          key: const ValueKey('StreamTab'), 
+                          announcements: _announcements, 
+                          formatTime: _formatTime, // <-- Truyền hàm vào đây
+                        ),
                       const _AssignmentsTab(),
-                      const _PeopleTab(),
+                      _PeopleTab(
+          key: const ValueKey('_PeopleTab'),
+          instructorName: widget.classData['instructor'] ?? 'Giảng viên', 
+          students: _members,
+          loggedInStudentId: _loggedInStudentId,
+          isLoading: _isLoading, // Có thể dùng chung
+        ),
                     ][_selectedIndex],
                   ),
                 ),
@@ -226,14 +329,25 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
 
 // ==================== TAB BẢNG TIN (STREAM) CHO SINH VIÊN ====================
 class _StreamTab extends StatelessWidget {
-  final List<String> announcements;
-  const _StreamTab({Key? key, required this.announcements}) : super(key: key);
+  // ⭐️ NHẬN LIST OF MAP thay vì List<String>
+  final List<Map<String, dynamic>> announcements;
+  // ⭐️ NHẬN HÀM ĐỊNH DẠNG THỜI GIAN
+  final String Function(String isoString) formatTime; 
+
+  const _StreamTab({
+    Key? key, 
+    required this.announcements,
+    required this.formatTime,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     if (announcements.isEmpty) {
       return const Center(
-        child: Text("Chưa có thông báo", style: TextStyle(fontSize: 20)),
+        child: Text(
+          'Chưa có thông báo nào được đăng.',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
       );
     }
 
@@ -241,19 +355,40 @@ class _StreamTab extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       itemCount: announcements.length,
       itemBuilder: (context, index) {
+        final announcement = announcements[index];
+        
+        // ⭐️ TRÍCH XUẤT THÔNG TIN: content và createdAt
+        final content = announcement['content'] ?? 'Thông báo không có nội dung.';
+        final createdAt = announcement['createdAt'] as String? ?? '2025-01-01T00:00:00.000Z'; // Dùng giá trị mặc định nếu không có
+
         return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0xFF6E48AA),
-              child: Text("GV", style: TextStyle(color: Colors.white)),
+          elevation: 2,
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ⭐️ HIỂN THỊ THỜI GIAN THỰC TỪ CREATEAT
+                Text(
+                  formatTime(createdAt), // SỬ DỤNG HÀM ĐỊNH DẠNG
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Thông báo mới',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.purple,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(content),
+              ],
             ),
-            title: const Text("Giảng viên", style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(announcements[index]),
-            ),
-            trailing: Text("vừa xong", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
           ),
         );
       },
@@ -298,27 +433,88 @@ class _AssignmentsTab extends StatelessWidget {
 
 // ==================== TAB MỌI NGƯỜI ====================
 class _PeopleTab extends StatelessWidget {
-  const _PeopleTab({Key? key}) : super(key: key);
+  // ⭐️ THÊM TRƯỜNG DỮ LIỆU
+  final String instructorName;
+  final List<Map<String, dynamic>> students;
+  final String? loggedInStudentId;
+  final bool isLoading;
+
+  const _PeopleTab({
+    Key? key,
+    required this.instructorName,
+    required this.students,
+    this.loggedInStudentId,
+    this.isLoading = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Sắp xếp danh sách sinh viên theo tên (A-Z)
+    final sortedStudents = List<Map<String, dynamic>>.from(students)
+      ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+
+    // Chuyển đổi danh sách sinh viên Map sang List<Widget>
+    final studentWidgets = sortedStudents.map((student) {
+      // ⭐️ ĐẢM BẢO CHUYỂN ID THÀNH CHUỖI ĐỂ SO SÁNH CHÍNH XÁC
+      final studentIdFromApi = student['_id']?.toString(); 
+      final studentName = student['name'] ?? 'Sinh viên không tên';
+      
+      // LOGIC THÊM CHÚ THÍCH (Bạn)
+      final isCurrentUser = studentIdFromApi != null && 
+                            loggedInStudentId != null && // Kiểm tra cả hai đều có giá trị
+                            studentIdFromApi == loggedInStudentId; // So sánh hai chuỗi
+      
+      final displayName = isCurrentUser 
+          ? '$studentName (Bạn)' 
+          : studentName;
+      
+      final firstLetter = studentName.isNotEmpty ? studentName[0].toUpperCase() : '?';
+
+      return ListTile(
+        leading: CircleAvatar(child: Text(firstLetter)),
+        title: Text(displayName,
+            // ⭐️ Thêm kiểu chữ đậm cho người dùng hiện tại (Tùy chọn)
+            style: isCurrentUser ? const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue) : null, 
+        ), 
+        subtitle: Text(student['mssv'] ?? student['email'] ?? 'Sinh viên'), 
+      );
+    }).toList();
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // 1. Giảng viên
         ListTile(
-          leading: const CircleAvatar(backgroundColor: Colors.orange, child: Text("GV")),
-          title: const Text("Giảng viên"),
-          subtitle: const Text("Nguyễn Văn A"),
+          title: Text(
+            'Giảng viên',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
         ),
-        const Divider(),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text("Học viên", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ListTile(
+          leading: CircleAvatar(
+            child: Text(instructorName.isNotEmpty ? instructorName[0] : 'G'),
+            backgroundColor: Colors.purple.shade100,
+          ),
+          title: Text(instructorName),
+          subtitle: const Text('Giảng viên'),
         ),
-        ...["Trần Thị B", "Lê Văn C", "Phạm Thị D"].map((name) => ListTile(
-          leading: CircleAvatar(child: Text(name[0])),
-          title: Text(name),
-        )),
+        
+        const Divider(height: 30),
+
+        // 2. Sinh viên
+        ListTile(
+          title: Text(
+            'Sinh viên (${students.length})',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        
+        // Hiển thị danh sách sinh viên đã được load từ API
+        ...studentWidgets,
       ],
     );
   }
