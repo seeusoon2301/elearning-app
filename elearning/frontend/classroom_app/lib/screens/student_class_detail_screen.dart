@@ -133,7 +133,6 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
     final textColor = isDark ? Colors.white : Colors.black87;
     final hintColor = isDark ? Colors.white60 : Colors.black54;
     final iconColor = isDark ? const Color(0xFFE0AAFF) : const Color(0xFF6E48AA);
@@ -268,7 +267,9 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
                           announcements: _announcements, 
                           formatTime: _formatTime, // <-- Truyền hàm vào đây
                         ),
-                      const _AssignmentsTab(),
+                      _AssignmentsTab(
+    classId: widget.classData['_id'],
+),
                       _PeopleTab(
           key: const ValueKey('_PeopleTab'),
           instructorName: widget.classData['instructor'] ?? 'Giảng viên', 
@@ -397,36 +398,119 @@ class _StreamTab extends StatelessWidget {
 }
 
 // ==================== TAB BÀI TẬP ====================
-class _AssignmentsTab extends StatelessWidget {
-  const _AssignmentsTab({Key? key}) : super(key: key);
+class _AssignmentsTab extends StatefulWidget {
+  final String classId;
+
+  const _AssignmentsTab({Key? key, required this.classId}) : super(key: key);
+
+  @override
+  State<_AssignmentsTab> createState() => _AssignmentsTabState();
+}
+
+class _AssignmentsTabState extends State<_AssignmentsTab> {
+  // Dữ liệu bài tập thực tế từ API
+  List<Map<String, dynamic>> assignments = [];
+  bool isLoadingAssignments = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // ⭐️ Bắt đầu tải dữ liệu khi tab được tạo
+    _fetchAssignments();
+  }
+
+  // HÀM TẢI DANH SÁCH BÀI TẬP TỪ API
+  Future<void> _fetchAssignments() async {
+    if (mounted) {
+      setState(() {
+        isLoadingAssignments = true;
+      });
+    }
+
+    try {
+      // ⭐️ GỌI HÀM API ĐÃ ĐƯỢC ĐỊNH NGHĨA TRONG api_service.dart
+      final fetchedAssignments = await ApiService.fetchAssignments(widget.classId);
+
+      if (mounted) {
+        setState(() {
+          assignments = fetchedAssignments;
+        });
+      }
+    } catch (e) {
+      // Xử lý lỗi và hiển thị thông báo
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("❌ Lỗi tải bài tập: ${e.toString().replaceFirst("Exception: ", "")}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingAssignments = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final assignments = [
-      {"title": "Bài tập 1: Todo List App", "due": "20/03/2025", "status": "Chưa nộp"},
-      {"title": "Bài tập 2: Quản lý sinh viên", "due": "30/03/2025", "status": "Đã nộp"},
-    ];
+    // 1. Hiển thị Loading
+    if (isLoadingAssignments) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: assignments.length,
-      itemBuilder: (context, index) {
-        final item = assignments[index];
-        return Card(
-          child: ListTile(
-            leading: Icon(Icons.assignment, color: Colors.purple[600]),
-            title: Text(item["title"]!, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text("Hạn nộp: ${item["due"]}"),
-            trailing: Chip(
-              label: Text(item["status"]!, style: TextStyle(color: item["status"] == "Chưa nộp" ? Colors.red : Colors.green)),
-              backgroundColor: (item["status"] == "Chưa nộp" ? Colors.red : Colors.green).withOpacity(0.2),
+    // 2. Hiển thị thông báo khi không có bài tập
+    if (assignments.isEmpty) {
+      return const Center(child: Text("🎉 Lớp học chưa có bài tập nào."));
+    }
+
+    // 3. Hiển thị danh sách bài tập
+    return RefreshIndicator(
+      onRefresh: _fetchAssignments, // Kéo xuống để refresh
+      child: ListView.builder(
+        padding: const EdgeInsets.all(8.0),
+        itemCount: assignments.length,
+        itemBuilder: (context, index) {
+          final assignment = assignments[index];
+          final String title = assignment['title'] ?? 'Bài tập không tên';
+          
+          // Lấy thông tin file
+          final fileInfo = assignment['file'] as Map<String, dynamic>?;
+          final String originalFileName = fileInfo?['originalFileName'] ?? 'Không có tệp';
+          
+          // Xử lý Hạn nộp
+          final DateTime dueDate = DateTime.tryParse(assignment['dueDate'] ?? '') ?? DateTime.now();
+
+          // Định dạng ngày (Đảm bảo bạn đã import 'package:intl/intl.dart'; ở đầu file)
+          final String formattedDueDate = DateFormat('dd/MM/yyyy HH:mm').format(dueDate.toLocal());
+
+          return Card(
+            margin: const EdgeInsets.symmetric(vertical: 8.0),
+            child: ListTile(
+              leading: const Icon(Icons.assignment, color: Color(0xFF6E48AA)),
+              title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  Text('Tệp đính kèm: $originalFileName'),
+                  Text('Hạn nộp: $formattedDueDate', style: const TextStyle(color: Colors.red)),
+                ],
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios),
+              onTap: () {
+                // TODO: Triển khai màn hình chi tiết bài tập/nộp bài
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Xem chi tiết bài tập: $title')),
+                );
+              },
             ),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Mở bài tập: ${item["title"]}")));
-            },
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

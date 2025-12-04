@@ -1,5 +1,6 @@
 // server.js
 const express = require('express');
+const path = require('path');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const classRoutes = require('./routes/classRoutes');
@@ -18,7 +19,7 @@ const app = express();
 app.use(cors());
 // Middleware: Cho phép Express đọc JSON body
 app.use(express.json());
-
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', authRoutes);
 // Định nghĩa Routes
 app.use('/api/admin/classes', classRoutes);

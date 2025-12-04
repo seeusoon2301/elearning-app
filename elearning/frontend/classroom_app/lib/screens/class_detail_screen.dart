@@ -7,6 +7,7 @@ import './invite_student_screen.dart';
 import '../services/api_service.dart'; 
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ClassDetailScreen extends StatefulWidget {
   final Map<String, dynamic> classData;
@@ -457,17 +458,55 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
   
   List<Map<String, dynamic>> assignments = []; 
   bool isLoadingAssignments = true; 
-
+  
   // HÀM TẢI DỮ LIỆU TỪ STATIC STORAGE
   Future<void> _loadAssignments() async {
     // 1. Lấy dữ liệu bài tập đã lưu trữ cho classId hiện tại.
-    final currentAssignments = _localAssignmentsStorage[widget.classId] ?? [];
-
     if (mounted) {
       setState(() {
-        assignments = currentAssignments; // Gán dữ liệu từ static map
-        isLoadingAssignments = false; 
+        isLoadingAssignments = true;
       });
+    }
+
+    try {
+      // 1. Kiểm tra cache cục bộ (tùy chọn)
+      if (_localAssignmentsStorage.containsKey(widget.classId)) {
+        if (mounted) {
+          setState(() {
+            assignments = _localAssignmentsStorage[widget.classId]!;
+            isLoadingAssignments = false;
+          });
+        }
+        // Nếu có cache, vẫn gọi API trong nền để đảm bảo dữ liệu mới nhất
+        // Nhưng ta sẽ xử lý loading sau khi hoàn tất call API.
+      }
+      
+      // 2. Gọi API
+      final fetchedAssignments = await ApiService.fetchAssignments(widget.classId);
+
+      // 3. Cập nhật State và Cache
+      if (mounted) {
+        setState(() {
+          assignments = fetchedAssignments;
+          _localAssignmentsStorage[widget.classId] = fetchedAssignments;
+        });
+      }
+    } catch (e) {
+      // 4. Xử lý lỗi (Chỉ hiển thị lỗi nếu chưa có dữ liệu trong cache)
+      if (mounted && assignments.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("❌ Lỗi tải bài tập: ${e.toString().replaceFirst("Exception: ", "")}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingAssignments = false;
+        });
+      }
     }
   }
 
@@ -541,9 +580,11 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
 
   // HÀM XỬ LÝ UPLOAD VÀ LƯU TRỮ (VÀO STATIC MAP)
   Future<void> _processFileUpload(String assignmentTitle) async {
+    // 1. CHỌN FILE
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf', 'csv'],
+      allowedExtensions: ['pdf', 'docx', 'pptx', 'doc', 'xls', 'xlsx', 'ppt', 'txt', 'csv', 'zip', 'jpg', 'jpeg', 'png'],
+      withData: true, 
     );
 
     if (result == null || result.files.isEmpty) {
@@ -556,33 +597,82 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
     }
 
     final file = result.files.single;
+    final String? filePath = kIsWeb ? null : file.path;
+    final fileBytes = file.bytes;
     final fileName = file.name;
+
+    if (filePath == null && fileBytes == null) {
+        if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Không thể truy cập tệp trên nền tảng này."), backgroundColor: Colors.red),
+            );
+        }
+        return;
+    }
+    
     final title = assignmentTitle.isEmpty ? fileName.split('.').first : assignmentTitle; 
 
-    // 1. TẠO OBJECT BÀI TẬP MỚI (MOCK)
-    final newAssignment = {
-      '_id': DateTime.now().millisecondsSinceEpoch.toString(), 
-      'fileName': fileName, 
-      'title': title, 
-      'createdAt': DateTime.now().toIso8601String(),
-    };
+    final mockDueDate = DateTime.now().add(const Duration(days: 7)).toIso8601String(); 
 
-    // 2. CẬP NHẬT LOCAL STATE và STATIC STORAGE
     if (mounted) {
       setState(() {
-        // Thêm vào danh sách cục bộ
-        assignments.insert(0, newAssignment);
-        
-        // ⭐️ LƯU VÀO STATIC STORAGE cho classId hiện tại ⭐️
-        _localAssignmentsStorage[widget.classId] = assignments;
+        isLoadingAssignments = true; 
       });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Đã tạo bài tập: $title. (LOCAL MOCK)"), 
-          backgroundColor: const Color(0xFF6E48AA)
-        ),
+    }
+    
+    // 2. GỌI API UPLOAD
+    try {
+      // ⭐️ Bắt dữ liệu trả về từ API
+      final Map<String, dynamic> newAssignmentData = await ApiService.uploadAssignment(
+        classId: widget.classId,
+        title: title,
+        description: "",
+        dueDate: mockDueDate,
+        filePath: filePath, 
+        fileBytes: fileBytes,
+        fileName: fileName,
       );
+
+      // 3. THÀNH CÔNG: Sử dụng dữ liệu thực tế từ API
+      // final newAssignment = {
+      //   '_id': newAssignmentData['_id'], 
+      //   'fileName': newAssignmentData['file']['originalFileName'], 
+      //   'title': newAssignmentData['title'], 
+      //   'createdAt': newAssignmentData['createdAt'],
+      // };
+      await _loadAssignments();
+      if (mounted) {
+        final successTitle = newAssignmentData['title'] ?? fileName;
+
+        // setState(() {
+        //   assignments.insert(0, newAssignment);
+        //   _localAssignmentsStorage[widget.classId] = assignments;
+        // });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✅ Upload bài tập thành công: ${successTitle['title']}."), 
+            backgroundColor: const Color(0xFF6E48AA)
+          ),
+        );
+      }
+
+    } catch (e) {
+      // 4. THẤT BẠI: In ra lỗi nếu có exception
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("❌ Lỗi upload: ${e.toString().replaceFirst("Exception: ", "")}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingAssignments = false; 
+        });
+      }
     }
   }
 

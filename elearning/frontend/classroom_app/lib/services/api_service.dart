@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'dart:io';
+import 'package:http_parser/http_parser.dart';
+import 'package:mime/mime.dart';
 
 class StudentInfo {
   final String id;
@@ -631,5 +633,100 @@ class ApiService {
     
     // Trả về null nếu thiếu bất kỳ thông tin nào
     return null; 
+  }
+
+  static Future<Map<String, dynamic>> uploadAssignment({
+    required String classId,
+    required String title,
+    required String description,
+    required String dueDate,
+    String? filePath,
+    List<int>? fileBytes, 
+    required String fileName,
+  }) async {
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/assignments");
+
+    final request = http.MultipartRequest('POST', url);
+    request.headers.addAll(await _getHeaders()); 
+
+    request.fields['title'] = title;
+    request.fields['description'] = description;
+    request.fields['dueDate'] = dueDate; 
+
+    // 3. Thêm file
+    if (filePath != null && filePath.isNotEmpty) {
+      final mimeType = lookupMimeType(filePath) ?? 'application/octet-stream'; 
+      final file = File(filePath);
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file', 
+          file.path,
+          filename: fileName,
+          contentType: MediaType.parse(mimeType),
+        ),
+      );
+    } else if (fileBytes != null && fileBytes.isNotEmpty) {
+      final mimeType = lookupMimeType(fileName) ?? 'application/octet-stream'; 
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          fileBytes,
+          filename: fileName,
+          contentType: MediaType.parse(mimeType),
+        ),
+      );
+    } else {
+      throw Exception("Không tìm thấy tệp đính kèm.");
+    }
+    
+    // 4. Gửi request
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    // 5. Xử lý phản hồi
+    final Map<String, dynamic> data = jsonDecode(response.body); // Chắc chắn body là JSON
+    final bool isSuccessStatus = response.statusCode >= 200 && response.statusCode < 300;
+    if (!isSuccessStatus || data['success'] != true) {
+      // Lỗi được ném ra nếu không phải mã 2xx HOẶC cờ success là false
+      final errorMessage = data['message'] ?? 'Lỗi không xác định khi upload bài tập.';
+      
+      // Đảm bảo thông báo lỗi bao gồm cả Status Code nếu không phải 2xx
+      if (!isSuccessStatus) {
+         throw Exception('Lỗi HTTP ${response.statusCode}: $errorMessage');
+      }
+      
+      // Nếu là 2xx nhưng success: false (lỗi nghiệp vụ)
+      throw Exception(errorMessage);
+    }
+    
+    // TRẢ VỀ DỮ LIỆU BÀI TẬP KHI THÀNH CÔNG
+    return data['data']; 
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchAssignments(String classId) async {
+    final url = Uri.parse("$baseUrl/admin/classes/$classId/assignments");
+    
+    final response = await http.get(
+      url,
+      headers: await _getHeaders(),
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    // Kiểm tra Status Code trong phạm vi 2xx VÀ cờ 'success'
+    final bool isSuccessStatus = response.statusCode >= 200 && response.statusCode < 300;
+
+    if (!isSuccessStatus || data['success'] != true) {
+      final errorMessage = data['message'] ?? 'Lỗi không xác định khi tải danh sách bài tập.';
+      if (!isSuccessStatus) {
+         throw Exception('Lỗi HTTP ${response.statusCode}: $errorMessage');
+      }
+      throw Exception(errorMessage);
+    }
+
+    // Trả về danh sách bài tập (list of maps)
+    // Tôi giả định API trả về list trong trường 'data'
+    final List<dynamic> assignmentsData = data['data'] ?? [];
+    return assignmentsData.map((item) => item as Map<String, dynamic>).toList();
   }
 }
