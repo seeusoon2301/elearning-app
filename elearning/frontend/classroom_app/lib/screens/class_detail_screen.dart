@@ -1,13 +1,12 @@
 // lib/screens/class_detail_screen.dart
-
 import 'dart:math';
 import 'package:flutter/material.dart';
-// ⭐️ ĐÃ LOẠI BỎ: import 'package:shared_preferences/shared_preferences.dart';
 import '../instructor_drawer.dart';
 import './create_annoucement_screen.dart';
 import './invite_student_screen.dart';
 import '../services/api_service.dart'; 
-
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 
 class ClassDetailScreen extends StatefulWidget {
   final Map<String, dynamic> classData;
@@ -240,7 +239,12 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
                         isLoading: _isAnnouncementsLoading,
                         onRefresh: _loadAnnouncementsFromApi,
                       ),
-                      AssignmentsTab(iconColor: iconColor, textColor: textColor, hintColor: hintColor),
+                      AssignmentsTab(
+                        iconColor: iconColor,
+                        textColor: textColor,
+                        hintColor: hintColor,
+                        classId: classId,  // DÙNG BIẾN classId ĐÃ CÓ SẴN TRONG STATE!
+                      ),
                       // SỬ DỤNG WIDGET _StudentList
                       _StudentList(
                         key: _studentListKey, 
@@ -429,25 +433,321 @@ class StreamTab extends StatelessWidget {
   }
 }
 
-class AssignmentsTab extends StatelessWidget {
+class AssignmentsTab extends StatefulWidget {
   final Color iconColor, textColor, hintColor;
-  const AssignmentsTab({Key? key, required this.iconColor, required this.textColor, required this.hintColor}) : super(key: key);
+  final String classId;
+  const AssignmentsTab({
+    Key? key,
+    required this.iconColor,
+    required this.textColor,
+    required this.hintColor,
+    required this.classId,
+  }) : super(key: key);
+
+  @override
+  State<AssignmentsTab> createState() => _AssignmentsTabState();
+}
+
+class _AssignmentsTabState extends State<AssignmentsTab> {
+  // ⭐️ STATIC STORAGE: Lưu trữ bài tập theo Class ID ⭐️
+  // Dữ liệu sẽ mất khi ứng dụng bị đóng hoàn toàn (Kill Process / flutter run lại)
+  static final Map<String, List<Map<String, dynamic>>> _localAssignmentsStorage = {};
+
+  final TextEditingController _contentController = TextEditingController(); 
+  
+  List<Map<String, dynamic>> assignments = []; 
+  bool isLoadingAssignments = true; 
+
+  // HÀM TẢI DỮ LIỆU TỪ STATIC STORAGE
+  Future<void> _loadAssignments() async {
+    // 1. Lấy dữ liệu bài tập đã lưu trữ cho classId hiện tại.
+    final currentAssignments = _localAssignmentsStorage[widget.classId] ?? [];
+
+    if (mounted) {
+      setState(() {
+        assignments = currentAssignments; // Gán dữ liệu từ static map
+        isLoadingAssignments = false; 
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAssignments(); 
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  // HÀM HIỂN THỊ DIALOG TẠO BÀI TẬP
+  void _showAssignmentDialog() {
+    _contentController.clear(); 
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Tạo Bài Tập Mới"),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                TextField(
+                  controller: _contentController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tiêu đề (Nội dung bài tập)',
+                    border: OutlineInputBorder(),
+                  ),
+                  minLines: 1,
+                  maxLines: 4,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Trì hoãn để tránh lỗi TapGestureRecognizer
+                    Future.delayed(Duration.zero, () {
+                      Navigator.of(context).pop(); 
+                      _processFileUpload(_contentController.text); 
+                    });
+                  },
+                  icon: const Icon(Icons.attach_file),
+                  label: const Text('Đính kèm file (.pdf/.csv)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6E48AA),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Hủy'),
+              onPressed: () {
+                Future.delayed(Duration.zero, () {
+                  Navigator.of(context).pop();
+                });
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // HÀM XỬ LÝ UPLOAD VÀ LƯU TRỮ (VÀO STATIC MAP)
+  Future<void> _processFileUpload(String assignmentTitle) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'csv'],
+    );
+
+    if (result == null || result.files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Chưa có tệp nào được chọn."), backgroundColor: Colors.grey),
+        );
+      }
+      return;
+    }
+
+    final file = result.files.single;
+    final fileName = file.name;
+    final title = assignmentTitle.isEmpty ? fileName.split('.').first : assignmentTitle; 
+
+    // 1. TẠO OBJECT BÀI TẬP MỚI (MOCK)
+    final newAssignment = {
+      '_id': DateTime.now().millisecondsSinceEpoch.toString(), 
+      'fileName': fileName, 
+      'title': title, 
+      'createdAt': DateTime.now().toIso8601String(),
+    };
+
+    // 2. CẬP NHẬT LOCAL STATE và STATIC STORAGE
+    if (mounted) {
+      setState(() {
+        // Thêm vào danh sách cục bộ
+        assignments.insert(0, newAssignment);
+        
+        // ⭐️ LƯU VÀO STATIC STORAGE cho classId hiện tại ⭐️
+        _localAssignmentsStorage[widget.classId] = assignments;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Đã tạo bài tập: $title. (LOCAL MOCK)"), 
+          backgroundColor: const Color(0xFF6E48AA)
+        ),
+      );
+    }
+  }
+
+  // ⭐️ HÀM XỬ LÝ XÓA BÀI TẬP ⭐️
+  void _deleteAssignment(int index) {
+    if (mounted) {
+      setState(() {
+        assignments.removeAt(index);
+        // Cập nhật Static Map
+        _localAssignmentsStorage[widget.classId] = assignments;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Đã xóa bài tập thành công!"), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ⭐️ HÀM XỬ LÝ CHỈNH SỬA TIÊU ĐỀ ⭐️
+  void _editAssignment(int index, String newTitle) {
+    if (mounted) {
+      setState(() {
+        // Cập nhật tiêu đề trong danh sách cục bộ
+        final finalTitle = newTitle.trim().isEmpty ? assignments[index]['fileName'].split('.').first : newTitle;
+        assignments[index]['title'] = finalTitle;
+        
+        // Cập nhật Static Map
+        _localAssignmentsStorage[widget.classId] = assignments;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Đã cập nhật bài tập thành: ${assignments[index]['title']}"), backgroundColor: const Color(0xFF6E48AA)),
+      );
+    }
+  }
+
+  // HÀM HIỂN THỊ DIALOG CHỈNH SỬA
+  void _showEditDialog(Map<String, dynamic> assignment, int index) {
+    final editController = TextEditingController(text: assignment['title']);
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Chỉnh sửa Tiêu đề"),
+          content: TextField(
+            controller: editController,
+            decoration: const InputDecoration(
+              labelText: 'Tiêu đề mới',
+              border: OutlineInputBorder(),
+            ),
+            minLines: 1,
+            maxLines: 4,
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Hủy'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            ElevatedButton(
+              child: const Text('Lưu'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _editAssignment(index, editController.text);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.assignment_turned_in_rounded, size: 110, color: iconColor),
-          const SizedBox(height: 32),
-          Text("Đây là nơi giao bài tập",
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: textColor)),
-          const SizedBox(height: 16),
-          Text("Bạn có thể thêm bài tập & nhiệm vụ khác cho lớp",
-              style: TextStyle(fontSize: 16, color: hintColor)),
-        ],
-      ),
+    return Stack(
+      children: [
+        // Danh sách bài tập
+        isLoadingAssignments
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF6E48AA)))
+            : assignments.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.assignment_turned_in_rounded, size: 110, color: widget.iconColor),
+                        const SizedBox(height: 32),
+                        Text("Chưa có bài tập", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: widget.textColor)),
+                        const SizedBox(height: 16),
+                        Text("Bấm nút + để đăng file PDF hoặc CSV", style: TextStyle(fontSize: 16, color: widget.hintColor)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: assignments.length,
+                    itemBuilder: (context, index) {
+                      final assignment = assignments[index];
+                      final fileName = assignment['fileName'] ?? 'assignment.pdf';
+                      final title = assignment['title'] ?? fileName.split('.').first;
+                      final fileExtension = fileName.split('.').last.toLowerCase();
+                      
+                      IconData leadingIcon;
+                      Color iconColor;
+
+                      if (fileExtension == 'pdf') {
+                        leadingIcon = Icons.picture_as_pdf;
+                        iconColor = Colors.red;
+                      } else if (fileExtension == 'csv') {
+                        leadingIcon = Icons.grid_on_rounded;
+                        iconColor = Colors.green;
+                      } else {
+                        leadingIcon = Icons.file_present;
+                        iconColor = Colors.grey;
+                      }
+
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 6,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: iconColor,
+                            child: Icon(leadingIcon, color: Colors.white),
+                          ),
+                          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text("File: $fileName"),
+                          // ⭐️ NÚT CHỈNH SỬA VÀ XÓA ⭐️
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                _showEditDialog(assignment, index);
+                              } else if (value == 'delete') {
+                                _deleteAssignment(index);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(value: 'edit', child: Text('Chỉnh sửa tiêu đề')),
+                              const PopupMenuItem(
+                                value: 'delete', 
+                                child: Text('Xóa bài tập', style: TextStyle(color: Colors.red))
+                              ),
+                            ],
+                            icon: const Icon(Icons.more_vert),
+                          ),
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("Đang tải: $fileName")),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+
+        // Nút upload
+        Positioned(
+          bottom: 20,
+          right: 20,
+          child: FloatingActionButton(
+            heroTag: 'uploadFab',
+            backgroundColor: const Color(0xFF6E48AA),
+            child: const Icon(Icons.add, size: 32, color: Colors.white), 
+            onPressed: _showAssignmentDialog,
+          ),
+        ),
+      ],
     );
   }
 }
