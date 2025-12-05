@@ -1,6 +1,8 @@
 // lib/screens/class_detail_screen.dart
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../instructor_drawer.dart';
 import './create_annoucement_screen.dart';
 import './invite_student_screen.dart';
@@ -24,6 +26,36 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   late Animation<double> _waveAnimation;
   int _selectedIndex = 0;
   
+  // ⭐️ Khai báo biến cần thiết (nếu chưa có)
+  String? _loggedInInstructorName; 
+  String? _loggedInInstructorId; 
+  
+  // ⭐️ Hàm định dạng thời gian (CẦN THIẾT)
+  String _formatTime(String isoString) {
+    try {
+      final dateTime = DateTime.parse(isoString).toLocal();
+      if (DateTime.now().difference(dateTime).inMinutes < 5) {
+        return 'Vừa xong';
+      }
+      // Yêu cầu import 'package:intl/intl.dart';
+      return DateFormat('hh:mm a, dd/MM/yyyy').format(dateTime); 
+    } catch (e) {
+      return 'Không rõ thời gian';
+    }
+  }
+
+  // ⭐️ ĐÃ ĐỔI TÊN: HÀM TẢI THÔNG TIN GIẢNG VIÊN
+  Future<void> _loadInstructorInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        // ⭐️ ĐÃ ĐỔI TÊN BIẾN
+        _loggedInInstructorId = prefs.getString('instructorId');
+        _loggedInInstructorName = prefs.getString('instructorName') ?? 'Giảng viên'; 
+      });
+    }
+  }
+
   // ⭐️ THAY ĐỔI: Dữ liệu cho tab Stream (Lấy từ API)
   List<Map<String, dynamic>> _announcements = []; 
   // ⭐️ THÊM: Trạng thái loading riêng cho bảng tin
@@ -40,6 +72,7 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
     
     // ⭐️ GỌI HÀM MỚI ĐỂ TẢI BẢNG TIN TỪ API
     _loadAnnouncementsFromApi();
+    _loadInstructorInfo();
   }
 
   // ⭐️ HÀM MỚI: Tải bảng tin từ API
@@ -239,13 +272,17 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
                         announcements: _announcements,
                         isLoading: _isAnnouncementsLoading,
                         onRefresh: _loadAnnouncementsFromApi,
+                        formatTime: _formatTime, 
+                        // ⭐️ ĐÃ SỬA: SỬ DỤNG TÊN BIẾN MỚI
+                        loggedInInstructorName: _loggedInInstructorName ?? 'Giảng viên', 
                       ),
-                      AssignmentsTab(
-                        iconColor: iconColor,
-                        textColor: textColor,
-                        hintColor: hintColor,
-                        classId: classId,  // DÙNG BIẾN classId ĐÃ CÓ SẴN TRONG STATE!
-                      ),
+                    // ⭐️ AssignmentsTab
+                    AssignmentsTab(
+                      iconColor: iconColor,
+                      textColor: textColor,
+                      hintColor: hintColor, // ⭐️ ĐÃ SỬA: THÊM tham số hintColor
+                      classId: classId,
+                    ),
                       // SỬ DỤNG WIDGET _StudentList
                       _StudentList(
                         key: _studentListKey, 
@@ -338,101 +375,411 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   }
 }
 
-// ⭐️ WIDGET StreamTab ĐÃ ĐƯỢC CẬP NHẬT ĐỂ NHẬN DỮ LIỆU TỪ API
+// ==================== TAB BẢNG TIN (STREAM) CHO GIẢNG VIÊN ====================
 class StreamTab extends StatelessWidget {
   final List<Map<String, dynamic>> announcements;
+  final String Function(String isoString) formatTime; 
+  // ⭐️ ĐÃ ĐỔI TÊN: Tên Giảng viên đăng nhập
+  final String loggedInInstructorName; 
   final bool isLoading;
-  final VoidCallback onRefresh;
+  final Future<void> Function() onRefresh;
 
   const StreamTab({
-    Key? key,
+    Key? key, 
     required this.announcements,
+    required this.formatTime,
+    required this.loggedInInstructorName, // ⭐️ ĐÃ ĐỔI TÊN
     required this.isLoading,
     required this.onRefresh,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading && announcements.isEmpty) {
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: const Color(0xFF6E48AA)),
-              const SizedBox(height: 16),
-              const Text("Đang tải bảng tin...", style: TextStyle(fontSize: 18)),
-            ],
-          ),
-        );
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator()); 
     }
     
     if (announcements.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.chat_bubble_rounded, size: 110, color: const Color.fromARGB(255, 96, 50, 170)),
-            const SizedBox(height: 32),
-            const Text("Chưa có thông báo nào", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            const Text("Bấm nút + để tạo thông báo đầu tiên", style: TextStyle(fontSize: 16)),
-          ],
+      return const Center(
+        child: Text(
+          'Chưa có thông báo nào được đăng.',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
         ),
       );
     }
-
+    
     return RefreshIndicator(
-      onRefresh: () async {
-        onRefresh();
-      },
+      onRefresh: onRefresh,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0), 
         itemCount: announcements.length,
         itemBuilder: (context, index) {
           final announcement = announcements[index];
-          final content = announcement['content']?.toString() ?? "Nội dung trống";
-          final createdAtString = announcement['createdAt']?.toString() ?? announcement['updatedAt']?.toString();
-          final createdAt = createdAtString != null && createdAtString.isNotEmpty
-                             ? DateTime.tryParse(createdAtString) ?? DateTime.now()
-                             : DateTime.now();
           
-          final timeAgo = _formatTimeAgo(createdAt);
-
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFF6E48AA),
-                child: Text("GV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-              title: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("Giảng viên", style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text(timeAgo, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                ],
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(content),
-              ),
-            ),
+          return _AnnouncementItem(
+            key: ValueKey(announcement['_id'] ?? index), 
+            announcement: announcement,
+            formatTime: formatTime,
+            // ⭐️ ĐÃ ĐỔI TÊN PROP TRUYỀN VÀO
+            loggedInUserName: loggedInInstructorName, 
           );
         },
       ),
     );
   }
+}
 
-  // Hàm format thời gian đơn giản
-  String _formatTimeAgo(DateTime date) {
-    final duration = DateTime.now().difference(date);
-    if (duration.inMinutes < 1) return "vừa xong";
-    if (duration.inMinutes < 60) return "${duration.inMinutes} phút trước";
-    if (duration.inHours < 24) return "${duration.inHours} giờ trước";
-    return "${date.day}/${date.month}/${date.year}";
+// ====================================================================
+// ⭐️ GLOBAL STATIC MAP CHO COMMENTS (Lưu comment tạm thời) ⭐️
+// ====================================================================
+/// LƯU TRỮ COMMENT TẠM THỜI TOÀN CỤC (GLOBAL STATIC IN-MEMORY STORE)
+/// Key: Announcement ID (String)
+class GlobalCommentStore {
+  static final Map<String, List<Map<String, dynamic>>> _comments = {};
+
+  static List<Map<String, dynamic>> getComments(String announcementId) {
+    // Trả về danh sách comments cho ID, nếu không có thì trả về danh sách rỗng
+    return _comments[announcementId] ?? [];
+  }
+
+  static void setComments(String announcementId, List<Map<String, dynamic>> comments) {
+    // Lưu danh sách comments mới
+    _comments[announcementId] = comments;
   }
 }
+
+class _AnnouncementItem extends StatefulWidget {
+  final Map<String, dynamic> announcement;
+  final String Function(String isoString) formatTime;
+  // ⭐️ ĐÃ ĐỔI TÊN PROP THÀNH TÊN CHUNG
+  final String loggedInUserName; 
+
+  const _AnnouncementItem({
+    Key? key,
+    required this.announcement,
+    required this.formatTime,
+    required this.loggedInUserName, 
+  }) : super(key: key);
+
+  @override
+  State<_AnnouncementItem> createState() => _AnnouncementItemState();
+}
+
+class _AnnouncementItemState extends State<_AnnouncementItem> {
+  List<Map<String, dynamic>> _localComments = []; 
+  final TextEditingController _commentController = TextEditingController();
+  final ScrollController _commentScrollController = ScrollController(); 
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComments(); 
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    _commentScrollController.dispose();
+    super.dispose();
+  }
+
+  void _loadComments() {
+    final String announcementId = widget.announcement['_id'] ?? 'default_id';
+    final List<Map<String, dynamic>> storedComments = GlobalCommentStore.getComments(announcementId);
+    _localComments = List<Map<String, dynamic>>.from(storedComments);
+  }
+
+  void _saveComments() {
+    final String announcementId = widget.announcement['_id'] ?? 'default_id';
+    GlobalCommentStore.setComments(announcementId, _localComments);
+  }
+
+  void _postComment() {
+    final commentText = _commentController.text.trim();
+    if (commentText.isNotEmpty) {
+      setState(() {
+        _localComments.add({
+          // ⭐️ SỬ DỤNG TÊN BIẾN CHUNG
+          'author': widget.loggedInUserName,
+          'content': commentText,
+          'time': DateTime.now().toIso8601String(),
+        });
+      });
+      _saveComments(); 
+      _commentController.clear();
+      FocusScope.of(context).unfocus(); 
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_commentScrollController.hasClients) {
+          _commentScrollController.animateTo(
+            _commentScrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+  
+  // Logic build (Giữ nguyên, chỉ cần dùng widget.loggedInUserName)
+  Widget _buildCommentInput(bool isDark, Color primaryColor, Color cardColor) {
+    return Container(
+      padding: const EdgeInsets.only(left: 16.0, right: 8.0, top: 10.0, bottom: 10.0), 
+      decoration: BoxDecoration(
+        color: cardColor, 
+        borderRadius: const BorderRadius.vertical(top: Radius.zero, bottom: Radius.circular(16)), 
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end, 
+        children: [
+          CircleAvatar(
+            backgroundColor: primaryColor,
+            radius: 16, 
+            child: Text(
+              widget.loggedInUserName.isNotEmpty ? widget.loggedInUserName[0].toUpperCase() : 'B',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _commentController,
+              keyboardType: TextInputType.multiline,
+              maxLines: null,
+              minLines: 1,
+              decoration: InputDecoration(
+                hintText: 'Viết bình luận...',
+                hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600]),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25), 
+                  borderSide: BorderSide.none, 
+                ),
+                filled: true,
+                fillColor: isDark ? Colors.grey[900] : Colors.grey[100], 
+              ),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
+              onSubmitted: (_) => _postComment(),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.send_rounded, color: primaryColor, size: 24),
+            onPressed: _postComment,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCommentList(bool isDark, Color primaryColor) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0, left: 0, right: 0, bottom: 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 32.0, right: 16.0, bottom: 10),
+            child: Text(
+              'Bình luận (${_localComments.length})',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: primaryColor,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          
+          ListView.builder(
+            controller: _commentScrollController, 
+            reverse: false, 
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            physics: const NeverScrollableScrollPhysics(), 
+            itemCount: _localComments.length,
+            itemBuilder: (context, index) {
+              final comment = _localComments[index];
+              final String author = comment['author'] ?? 'Người dùng';
+              final DateTime commentTime = DateTime.tryParse(comment['time'] ?? '') ?? DateTime.now();
+              
+              final duration = DateTime.now().difference(commentTime);
+              String timeAgo;
+              if (duration.inMinutes < 1) {
+                timeAgo = "vừa xong";
+              } else if (duration.inHours < 1) {
+                timeAgo = "${duration.inMinutes} phút trước";
+              } else if (duration.inHours < 24) {
+                timeAgo = "${duration.inHours} giờ trước";
+              } else {
+                timeAgo = DateFormat('HH:mm dd/MM').format(commentTime.toLocal());
+              }
+              
+              final isInstructor = author.contains('Giảng viên') || author.contains(widget.loggedInUserName); 
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: isInstructor ? primaryColor : primaryColor.withOpacity(0.5),
+                      child: Text(
+                        author.isNotEmpty ? author[0].toUpperCase() : '?',
+                        style: const TextStyle(fontSize: 12, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  author,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: isDark ? Colors.white : Colors.black,
+                                  ),
+                                ),
+                                Text(
+                                  timeAgo,
+                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              comment['content'] ?? '',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? Colors.grey[850] : Colors.white;
+    final textColor = isDark ? Colors.white70 : Colors.black87;
+    final primaryColor = const Color(0xFF6E48AA); 
+
+    final announcement = widget.announcement;
+    final content = announcement['content'] ?? 'Thông báo không có nội dung.';
+    final createdAt = announcement['createdAt'] as String? ?? '2025-01-01T00:00:00.000Z';
+    
+    final cardBorderRadius = BorderRadius.vertical(
+      top: const Radius.circular(16), 
+      bottom: Radius.zero, 
+    );
+
+    return Column(
+      children: [
+        // 1. CARD THÔNG BÁO 
+        Card(
+          color: cardColor,
+          elevation: 6, 
+          margin: const EdgeInsets.only(bottom: 0), 
+          shape: RoundedRectangleBorder(borderRadius: cardBorderRadius), 
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: primaryColor.withOpacity(0.15),
+                      child: const Icon(Icons.campaign_rounded, color: Color(0xFF6E48AA), size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Thông báo mới từ Giảng viên',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: primaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.formatTime(createdAt), 
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const Divider(height: 28, thickness: 1), 
+                
+                Text(
+                  content,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: textColor,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // 2. CONTAINER CHỨA COMMENTS VÀ INPUT
+        Column(
+          children: [
+            if (_localComments.isNotEmpty)
+              Container(
+                color: cardColor,
+                child: _buildCommentList(isDark, primaryColor),
+              ),
+
+            // INPUT COMMENT
+            _buildCommentInput(isDark, primaryColor, cardColor!),
+          ],
+        ),
+        
+        const SizedBox(height: 16), 
+      ],
+    );
+  }
+}
+
+// ====================================================================
+// TAB BÀI TẬP
+// ====================================================================
 
 class AssignmentsTab extends StatefulWidget {
   final Color iconColor, textColor, hintColor;
