@@ -8,12 +8,14 @@ import 'role_provider.dart';
 import 'theme_provider.dart';
 import 'instructor_dashboard.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final String? initialRole = prefs.getString('role');
-
+  initializeDateFormatting();
   runApp(MyApp(initialRole: initialRole));
 }
 

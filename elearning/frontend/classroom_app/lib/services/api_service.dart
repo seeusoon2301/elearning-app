@@ -17,7 +17,7 @@ class StudentInfo {
 class ApiService {
   // Đảm bảo baseUrl đúng cho môi trường của bạn (ví dụ: http://10.0.2.2:3000/api)
   static const baseUrl = "http://localhost:5000/api"; 
-
+  static final Map<String, List<Map<String, dynamic>>> _classCache = {};
   // =====================================================================
   // HÀM AUTHENTICATION (Giữ nguyên)
   // =====================================================================
@@ -196,11 +196,17 @@ class ApiService {
   }
   
   // =====================================================================
-  // 🔥 HÀM MỚI QUAN TRỌNG: LẤY DANH SÁCH LỚP HỌC THEO HỌC KỲ ID
-  // Endpoint giả định: GET /api/admin/semesters/:semesterId/classes
+  // 🔥 HÀM CẬP NHẬT: LẤY DANH SÁCH LỚP HỌC THEO HỌC KỲ ID (CÓ CACHE)
   // =====================================================================
   static Future<List<Map<String, dynamic>>> fetchClassesBySemesterId(String semesterId) async {
-    // Cập nhật endpoint phù hợp với backend của bạn. Tôi dùng path param.
+    // 1. KIỂM TRA CACHE TRƯỚC
+    // Nếu có, trả về ngay lập tức (Giữ data khi chuyển tab)
+    if (_classCache.containsKey(semesterId)) {
+      print('DEBUG: [CACHE] Đã lấy lớp học từ bộ nhớ đệm cho ID: $semesterId');
+      return _classCache[semesterId]!;
+    }
+    
+    // 2. NẾU KHÔNG CÓ TRONG CACHE, GỌI API
     final url = Uri.parse("$baseUrl/admin/semesters/$semesterId/classes"); 
     final token = await _getToken();
 
@@ -208,29 +214,32 @@ class ApiService {
       final response = await http.get(
         url,
         headers: {
-          'Authorization': 'Bearer $token', // Cần token để xác thực giảng viên
+          'Authorization': 'Bearer $token', 
         },
       );
 
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
         
-        // Giả định backend trả về trực tiếp List hoặc { data: List }
-        if (responseBody is List) {
-          return responseBody.map((item) => item as Map<String, dynamic>).toList();
-        }
+        List<Map<String, dynamic>> classes = [];
         
-        if (responseBody is Map && responseBody['data'] is List) {
-          return (responseBody['data'] as List)
+        if (responseBody is List) {
+          classes = responseBody.map((item) => item as Map<String, dynamic>).toList();
+        } else if (responseBody is Map && responseBody['data'] is List) {
+          classes = (responseBody['data'] as List)
               .map((item) => item as Map<String, dynamic>)
               .toList();
-        } 
+        } else {
+          return [];
+        }
         
-        // Xử lý trường hợp không có lớp học (trả về list rỗng)
-        return [];
+        // 3. LƯU VÀO CACHE TRƯỚC KHI TRẢ VỀ
+        _classCache[semesterId] = classes;
+        print('DEBUG: [CACHE] Đã lưu lớp học vào bộ nhớ đệm cho ID: $semesterId.');
+        
+        return classes;
 
       } else if (response.statusCode == 404) {
-        // Có thể server trả 404 nếu không tìm thấy học kỳ, nhưng thường trả 200 với list rỗng
         return [];
       } else {
         final responseBody = json.decode(response.body);
@@ -728,5 +737,23 @@ class ApiService {
     // Tôi giả định API trả về list trong trường 'data'
     final List<dynamic> assignmentsData = data['data'] ?? [];
     return assignmentsData.map((item) => item as Map<String, dynamic>).toList();
+  }
+
+  // =====================================================================
+  // 🔥 HÀM MỚI: ĐĂNG XUẤT VÀ XÓA CACHE
+  // Điều này đảm bảo khi người dùng mới login lại, họ sẽ thấy dữ liệu mới.
+  // =====================================================================
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Xóa Token và thông tin user đã lưu
+    await prefs.remove("token");
+    await prefs.remove("role");
+    // Thêm các key khác bạn lưu (ví dụ: studentId, studentName, v.v.)
+    
+    // Xóa static cache. Đây là bước quan trọng để buộc tải lại data sau login.
+    _classCache.clear(); 
+    
+    print('✅ LOGOUT THÀNH CÔNG! Đã xóa token và cache lớp học.');
   }
 }

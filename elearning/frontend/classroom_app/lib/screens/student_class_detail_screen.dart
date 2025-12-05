@@ -28,6 +28,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
 
   List<Map<String, dynamic>> _members = [];
   String? _loggedInStudentId;
+  String? _loggedInStudentName; // ⭐️ THÊM TRƯỜNG NÀY
 
   @override
   void initState() {
@@ -35,6 +36,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
 
+    _loadStudentInfo();
     _loadAnnouncements();
     _loadMembers();
   }
@@ -51,6 +53,17 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
     } catch (e) {
       //print('Lỗi định dạng thời gian: $e');
       return 'Không rõ thời gian';
+    }
+  }
+
+  // ⭐️ HÀM MỚI: Tải tên người dùng
+  Future<void> _loadStudentInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        // Giả sử bạn lưu tên sinh viên vào 'studentName' trong SharedPreferences khi login
+        _loggedInStudentName = prefs.getString('studentName') ?? 'Bạn'; 
+      });
     }
   }
 
@@ -266,6 +279,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
                           key: const ValueKey('StreamTab'), 
                           announcements: _announcements, 
                           formatTime: _formatTime, // <-- Truyền hàm vào đây
+                          loggedInStudentName: _loggedInStudentName ?? 'Bạn', // ⭐️ TRUYỀN TÊN
                         ),
                       _AssignmentsTab(
     classId: widget.classData['_id'],
@@ -330,15 +344,15 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
 
 // ==================== TAB BẢNG TIN (STREAM) CHO SINH VIÊN ====================
 class _StreamTab extends StatelessWidget {
-  // ⭐️ NHẬN LIST OF MAP thay vì List<String>
   final List<Map<String, dynamic>> announcements;
-  // ⭐️ NHẬN HÀM ĐỊNH DẠNG THỜI GIAN
   final String Function(String isoString) formatTime; 
+  final String loggedInStudentName; // ⭐️ ĐÃ CÓ: Tên sinh viên đăng nhập
 
   const _StreamTab({
     Key? key, 
     required this.announcements,
     required this.formatTime,
+    required this.loggedInStudentName,
   }) : super(key: key);
 
   @override
@@ -352,47 +366,353 @@ class _StreamTab extends StatelessWidget {
       );
     }
 
+    // ⭐️ BỎ CÁC ĐỊNH NGHĨA MÀU SẮC DƯ THỪA (vì _AnnouncementItem sẽ tự lo)
+    
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      // ⭐️ CẬP NHẬT: Chỉ giữ padding ngang cho ListView
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0), 
       itemCount: announcements.length,
       itemBuilder: (context, index) {
         final announcement = announcements[index];
         
-        // ⭐️ TRÍCH XUẤT THÔNG TIN: content và createdAt
-        final content = announcement['content'] ?? 'Thông báo không có nội dung.';
-        final createdAt = announcement['createdAt'] as String? ?? '2025-01-01T00:00:00.000Z'; // Dùng giá trị mặc định nếu không có
+        // ⭐️ SỬ DỤNG WIDGET MỚI _AnnouncementItem
+        return _AnnouncementItem(
+          // Key là bắt buộc để Flutter nhận diện State của từng Item
+          key: ValueKey(announcement['_id'] ?? index), 
+          announcement: announcement,
+          formatTime: formatTime,
+          loggedInStudentName: loggedInStudentName,
+        );
+      },
+    );
+  }
+}
 
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 16),
+// ==================== WIDGET THÔNG BÁO KÈM COMMENT ====================
+/// ⭐️ LƯU TRỮ COMMENT TẠM THỜI TOÀN CỤC (GLOBAL STATIC IN-MEMORY STORE)
+/// Dữ liệu sẽ được giữ lại khi chuyển tab, nhưng mất khi ứng dụng thoát/restart.
+/// Key: Announcement ID (String)
+class GlobalCommentStore {
+  static final Map<String, List<Map<String, dynamic>>> _comments = {};
+
+  static List<Map<String, dynamic>> getComments(String announcementId) {
+    // Trả về danh sách comments cho ID, nếu không có thì trả về danh sách rỗng
+    return _comments[announcementId] ?? [];
+  }
+
+  static void setComments(String announcementId, List<Map<String, dynamic>> comments) {
+    // Lưu danh sách comments mới
+    _comments[announcementId] = comments;
+  }
+}
+
+class _AnnouncementItem extends StatefulWidget {
+  final Map<String, dynamic> announcement;
+  final String Function(String isoString) formatTime;
+  final String loggedInStudentName; 
+
+  const _AnnouncementItem({
+    Key? key,
+    required this.announcement,
+    required this.formatTime,
+    required this.loggedInStudentName,
+  }) : super(key: key);
+
+  @override
+  State<_AnnouncementItem> createState() => _AnnouncementItemState();
+}
+
+class _AnnouncementItemState extends State<_AnnouncementItem> {
+  List<Map<String, dynamic>> _localComments = []; 
+  final TextEditingController _commentController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadComments(); 
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  // ⭐️ TẢI DỮ LIỆU TỪ GLOBAL MAP
+  void _loadComments() {
+    final String announcementId = widget.announcement['_id'] ?? 'default_id';
+    
+    // Tải dữ liệu từ Global Store
+    final List<Map<String, dynamic>> storedComments = GlobalCommentStore.getComments(announcementId);
+    
+    // Sử dụng List.from() để tạo bản sao, tránh thay đổi trực tiếp Global Store khi gọi setState
+    _localComments = List<Map<String, dynamic>>.from(storedComments);
+  }
+
+  // ⭐️ LƯU DỮ LIỆU VÀO GLOBAL MAP
+  void _saveComments() {
+    final String announcementId = widget.announcement['_id'] ?? 'default_id';
+    // Lưu danh sách hiện tại (_localComments) vào Global Store
+    GlobalCommentStore.setComments(announcementId, _localComments);
+  }
+
+  // Cập nhật HÀM XỬ LÝ GỬI COMMENT
+  void _postComment() {
+    final commentText = _commentController.text.trim();
+    if (commentText.isNotEmpty) {
+      setState(() {
+        _localComments.add({
+          'author': widget.loggedInStudentName,
+          'content': commentText,
+          'time': DateTime.now().toIso8601String(),
+        });
+      });
+      _saveComments(); // ⭐️ LƯU COMMENT MỚI VÀO GLOBAL STORE
+      _commentController.clear();
+    }
+  }
+  
+  // ⭐️ HÀM BUILD WIDGET COMMENT INPUT (UI MỚI)
+  Widget _buildCommentInput(bool isDark, Color primaryColor, Color cardColor) {
+    return Container(
+      // Padding nhẹ nhàng hơn, dùng Row crossAxisAlignment.end để căn dưới
+      padding: const EdgeInsets.only(left: 16.0, right: 8.0, top: 10.0, bottom: 10.0), 
+      decoration: BoxDecoration(
+        color: cardColor, 
+        // Đảm bảo góc dưới bo tròn, đồng bộ với Card
+        borderRadius: BorderRadius.vertical(top: Radius.zero, bottom: const Radius.circular(16)), 
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end, 
+        children: [
+          CircleAvatar(
+            backgroundColor: primaryColor,
+            radius: 16, // ⭐️ Giảm kích thước Avatar
+            child: Text(
+              widget.loggedInStudentName.isNotEmpty ? widget.loggedInStudentName[0].toUpperCase() : 'B',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _commentController,
+              keyboardType: TextInputType.multiline,
+              maxLines: null, // Cho phép nhiều dòng
+              minLines: 1,
+              decoration: InputDecoration(
+                hintText: 'Viết bình luận...',
+                hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600]),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25), // ⭐️ Bo góc mềm mại
+                  borderSide: BorderSide.none, // ⭐️ Bỏ đường viền
+                ),
+                filled: true,
+                fillColor: isDark ? Colors.grey[900] : Colors.grey[100], 
+              ),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.send_rounded, color: primaryColor, size: 24),
+            onPressed: _postComment,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // HÀM BUILD DANH SÁCH COMMENTS (Có thể giữ nguyên hoặc điều chỉnh nhẹ)
+  Widget _buildCommentList(bool isDark, Color primaryColor) {
+    // Giữ nguyên logic UI comment list từ phiên bản trước
+    // ... (Your previous _buildCommentList implementation goes here) ...
+    // *Lưu ý: Bạn có thể muốn kiểm tra lại Padding ở đây nếu thấy quá trống.*
+    
+    // Dưới đây là đoạn code _buildCommentList từ lần trước, có điều chỉnh nhẹ:
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0, left: 0, right: 0, bottom: 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 32.0, right: 16.0, bottom: 0),
+            child: Text(
+              'Bình luận (${_localComments.length})',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: primaryColor,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          
+          ListView.builder(
+            reverse: true, 
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            physics: const NeverScrollableScrollPhysics(), 
+            itemCount: _localComments.length,
+            itemBuilder: (context, index) {
+              final comment = _localComments[index];
+              final String author = comment['author'] ?? 'Người dùng';
+              final String content = comment['content'] ?? '';
+              
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: primaryColor.withOpacity(0.5),
+                      child: Text(
+                        author.isNotEmpty ? author[0].toUpperCase() : '?',
+                        style: const TextStyle(fontSize: 12, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              author,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              content,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white70 : Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  // HÀM BUILD CHÍNH CỦA ITEM
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? Colors.grey[850] : Colors.white;
+    final textColor = isDark ? Colors.white70 : Colors.black87;
+    final primaryColor = const Color(0xFF6E48AA); 
+
+    final announcement = widget.announcement;
+    final content = announcement['content'] ?? 'Thông báo không có nội dung.';
+    final createdAt = announcement['createdAt'] as String? ?? '2025-01-01T00:00:00.000Z';
+    
+    // Tùy chỉnh bo góc cho Card chính
+    final cardBorderRadius = BorderRadius.vertical(
+      top: const Radius.circular(16), 
+      // Nếu có comment, bo góc dưới sẽ là Radius.zero để nối liền với phần comment/input
+      bottom: Radius.zero, 
+    );
+
+    return Column(
+      children: [
+        // 1. CARD THÔNG BÁO 
+        Card(
+          color: cardColor,
+          elevation: 6, 
+          margin: const EdgeInsets.only(bottom: 0), 
+          shape: RoundedRectangleBorder(borderRadius: cardBorderRadius), 
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ⭐️ HIỂN THỊ THỜI GIAN THỰC TỪ CREATEAT
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: primaryColor.withOpacity(0.15),
+                      child: const Icon(Icons.campaign_rounded, color: Color(0xFF6E48AA), size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Thông báo mới từ Giảng viên',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: primaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.formatTime(createdAt), 
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const Divider(height: 28, thickness: 1), 
+                
                 Text(
-                  formatTime(createdAt), // SỬ DỤNG HÀM ĐỊNH DẠNG
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Thông báo mới',
+                  content,
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.purple,
+                    fontSize: 15,
+                    color: textColor,
+                    height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(content),
               ],
             ),
           ),
-        );
-      },
+        ),
+
+        // 2. CONTAINER CHỨA COMMENTS VÀ INPUT
+        // Container này nối liền với Card và mang góc bo tròn dưới
+        Column(
+          children: [
+            // DANH SÁCH COMMENTS HIỆN TẠI (chỉ hiển thị nếu có)
+            if (_localComments.isNotEmpty)
+              Container(
+                color: cardColor,
+                child: _buildCommentList(isDark, primaryColor),
+              ),
+
+            // INPUT COMMENT
+            _buildCommentInput(isDark, primaryColor, cardColor!),
+          ],
+        ),
+        
+        const SizedBox(height: 16), // Khoảng cách giữa các bài đăng
+      ],
     );
   }
 }
@@ -433,7 +753,8 @@ class _AssignmentsTabState extends State<_AssignmentsTab> {
 
       if (mounted) {
         setState(() {
-          assignments = fetchedAssignments;
+          // Sắp xếp bài tập theo ngày tạo (mới nhất lên trên)
+          assignments = fetchedAssignments.reversed.toList();
         });
       }
     } catch (e) {
@@ -467,40 +788,85 @@ class _AssignmentsTabState extends State<_AssignmentsTab> {
       return const Center(child: Text("🎉 Lớp học chưa có bài tập nào."));
     }
 
+    // Lấy màu nền và màu chữ hiện tại
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? Colors.grey[850] : Colors.white;
+    final primaryColor = const Color(0xFF6E48AA);
+    final dangerColor = Colors.red[600];
+
     // 3. Hiển thị danh sách bài tập
     return RefreshIndicator(
       onRefresh: _fetchAssignments, // Kéo xuống để refresh
       child: ListView.builder(
-        padding: const EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(16.0), // Tăng padding tổng thể
         itemCount: assignments.length,
         itemBuilder: (context, index) {
           final assignment = assignments[index];
           final String title = assignment['title'] ?? 'Bài tập không tên';
-          
-          // Lấy thông tin file
           final fileInfo = assignment['file'] as Map<String, dynamic>?;
           final String originalFileName = fileInfo?['originalFileName'] ?? 'Không có tệp';
-          
-          // Xử lý Hạn nộp
-          final DateTime dueDate = DateTime.tryParse(assignment['dueDate'] ?? '') ?? DateTime.now();
-
-          // Định dạng ngày (Đảm bảo bạn đã import 'package:intl/intl.dart'; ở đầu file)
+          final DateTime dueDate = DateTime.tryParse(assignment['dueDate'] ?? '') ?? DateTime.now().add(const Duration(days: 7));
           final String formattedDueDate = DateFormat('dd/MM/yyyy HH:mm').format(dueDate.toLocal());
+          
+          // Kiểm tra xem đã quá hạn hay chưa
+          final bool isOverdue = dueDate.isBefore(DateTime.now());
 
           return Card(
-            margin: const EdgeInsets.symmetric(vertical: 8.0),
+            color: cardColor,
+            elevation: 8, // Tăng elevation
+            margin: const EdgeInsets.only(bottom: 16.0),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              // Thêm border nhẹ để trông nổi bật hơn
+              side: BorderSide(color: isOverdue ? dangerColor!.withOpacity(0.5) : primaryColor.withOpacity(0.1), width: 1.5), 
+            ),
             child: ListTile(
-              leading: const Icon(Icons.assignment, color: Color(0xFF6E48AA)),
-              title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 4),
-                  Text('Tệp đính kèm: $originalFileName'),
-                  Text('Hạn nộp: $formattedDueDate', style: const TextStyle(color: Colors.red)),
-                ],
+              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: CircleAvatar(
+                radius: 25,
+                backgroundColor: isOverdue ? dangerColor : primaryColor,
+                child: Icon(
+                  isOverdue ? Icons.timer_off_rounded : Icons.assignment_turned_in_rounded, 
+                  color: Colors.white, 
+                  size: 28
+                ),
               ),
-              trailing: const Icon(Icons.arrow_forward_ios),
+              title: Text(
+                title, 
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  color: isDark ? Colors.white : Colors.black87,
+                )
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tệp đính kèm: ${originalFileName.length > 30 ? originalFileName.substring(0, 27) + '...' : originalFileName}',
+                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.black54),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time_filled, size: 16, color: isOverdue ? dangerColor : primaryColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          isOverdue ? 'ĐÃ QUÁ HẠN: $formattedDueDate' : 'Hạn nộp: $formattedDueDate', 
+                          style: TextStyle(
+                            color: isOverdue ? dangerColor : primaryColor, 
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              trailing: Icon(Icons.arrow_forward_ios, size: 18, color: isDark ? Colors.white70 : Colors.black54),
               onTap: () {
                 // TODO: Triển khai màn hình chi tiết bài tập/nộp bài
                 ScaffoldMessenger.of(context).showSnackBar(

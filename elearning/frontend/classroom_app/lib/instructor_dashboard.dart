@@ -1,6 +1,7 @@
 // lib/instructor_dashboard.dart
 import 'dart:convert';
 import 'dart:io';
+import 'package:classroom_app/screens/assignment_list_for_instructor_screen.dart';
 import 'package:classroom_app/screens/instructor_profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import './screens/quiz_list_screen.dart';
@@ -10,6 +11,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import './screens/class_list_screen.dart';        // Đường dẫn đúng của bạn
 import 'instructor_drawer.dart';
+import 'package:classroom_app/screens/instructor_notification_screen.dart';
+import 'package:classroom_app/screens/student_list_for_instructor_screen.dart';
+import 'package:classroom_app/screens/instructor_report_screen.dart';
+
 
 // Giả định: Semester và SemesterProvider được định nghĩa trong ../providers/semester_provider.dart
 
@@ -476,7 +481,19 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                         Navigator.push(context, MaterialPageRoute(builder: (_) => const ClassListScreen())); 
                       }),
                       const SizedBox(width: 16),
-                      _buildBigCard(context, title: "Sinh viên", count: "248", icon: Icons.people, color: const Color(0xFF3949AB)),
+                      _buildBigCard(
+                        context, 
+                        title: "Sinh viên", 
+                        count: "248", 
+                        icon: Icons.people, 
+                        color: const Color(0xFF3949AB),
+                        onTap: () { // ⭐️ LOGIC ĐIỀU HƯỚNG MỚI
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const StudentListForInstructorScreen()),
+                          );
+                        }
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -509,7 +526,19 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                         },
                       ),
                       const SizedBox(width: 16),
-                      _buildBigCard(context, title: "Bài tập", count: "24", icon: Icons.assignment_turned_in, color: const Color(0xFF2E7D32)),
+                      _buildBigCard(
+                        context, 
+                        title: "Bài tập", 
+                        count: "24", 
+                        icon: Icons.assignment_turned_in, 
+                        color: const Color(0xFF2E7D32),
+                        onTap: () { // ⭐️ LOGIC ĐIỀU HƯỚNG MỚI
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const AssignmentListForInstructorScreen()),
+                          );
+                        }
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -517,9 +546,33 @@ class _InstructorDashboardState extends State<InstructorDashboard> with TickerPr
                   // HÀNG 3
                   Row(
                     children: [
-                      _buildBigCard(context, title: "Thông báo", count: "5 mới", icon: Icons.notifications_active, color: const Color(0xFFD32F2F)),
+                      _buildBigCard(
+                        context, 
+                        title: "Thông báo", 
+                        count: "5 mới", 
+                        icon: Icons.notifications_active, 
+                        color: const Color(0xFFD32F2F),
+                        onTap: () { // ⭐️ CODE ĐIỀU HƯỚNG MỚI
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const InstructorNotificationScreen()),
+                          );
+                        }
+                      ),
                       const SizedBox(width: 16),
-                      _buildBigCard(context, title: "Báo cáo", count: "", icon: Icons.bar_chart, color: const Color(0xFF00695C)),
+                      _buildBigCard(
+                        context, 
+                        title: "Báo cáo", 
+                        count: "", 
+                        icon: Icons.bar_chart, 
+                        color: const Color(0xFF00695C),
+                        onTap: () { // ⭐️ LOGIC ĐIỀU HƯỚNG MỚI
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const InstructorReportScreen()),
+                          );
+                        }
+                      ),
                     ],
                   ),
 

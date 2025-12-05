@@ -1,4 +1,5 @@
 // lib/instructor_drawer.dart
+import 'package:classroom_app/screens/instructor_notification_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,8 @@ import 'role_provider.dart';
 import 'services/api_service.dart';   // <<< THÊM DÒNG NÀY
 import 'instructor_dashboard.dart';
 import './screens/quiz_list_screen.dart';
+import 'package:classroom_app/screens/instructor_calendar_screen.dart';
+import 'package:classroom_app/screens/instructor_setting_screen.dart';
 
 class InstructorDrawer extends StatelessWidget {
   const InstructorDrawer({super.key});
@@ -92,8 +95,20 @@ class InstructorDrawer extends StatelessWidget {
                 );
               },
             ),
-            _buildItem(context, Icons.calendar_today, "Lịch"),
-            _buildItem(context, Icons.notifications, "Thông báo"),
+            _buildItem(context, Icons.calendar_today, "Lịch", onTap: () { // ⭐️ THÊM LOGIC ĐIỀU HƯỚNG MỚI
+              Navigator.pop(context); // Đóng Drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const InstructorCalendarScreen()), // Điều hướng đến trang lịch giảng viên
+              );
+            }),
+            _buildItem(context, Icons.notifications, "Thông báo", onTap:() {
+              Navigator.pop(context); // Đóng Drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const InstructorNotificationScreen()),
+              );
+            }),
 
             const Divider(height: 40, thickness: 1, color: Colors.white24),
 
@@ -161,7 +176,13 @@ class InstructorDrawer extends StatelessWidget {
 
             const Divider(height: 40),
 
-            _buildItem(context, Icons.settings, "Cài đặt"),
+            _buildItem(context, Icons.settings, "Cài đặt", onTap: (){
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const InstructorSettingsScreen()),
+              );
+            }),
             _buildItem(context, Icons.help_outline, "Trợ giúp"),
 
             ListTile(

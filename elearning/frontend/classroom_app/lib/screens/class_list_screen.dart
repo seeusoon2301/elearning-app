@@ -10,6 +10,7 @@ import '../instructor_drawer.dart';
 import '../services/api_service.dart'; 
 import '../providers/semester_provider.dart'; // ⭐️ Thêm import SemesterProvider
 import 'class_detail_screen.dart';
+import 'edit_class_screen.dart';
 
 class ClassListScreen extends StatefulWidget {
   const ClassListScreen({super.key}); 
@@ -93,6 +94,21 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
         });
       }
     }
+  }
+
+  void _updateExistingClass(Map<String, dynamic> updatedClass, int index) {
+    setState(() {
+      // Thay thế lớp học cũ bằng dữ liệu mới tại đúng vị trí
+      classes[index] = updatedClass; 
+    });
+    // Hiển thị thông báo (tùy chọn)
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Cập nhật lớp học thành công (Frontend)!"),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   // ⭐️ HÀM XÓA VẪN DÙNG classId, không cần thay đổi
@@ -624,7 +640,8 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
                         ],
                       ),
 
-                      // NÚT 3 CHẤM + MENU XÓA (GIỮ NGUYÊN)
+                      // lib/screens/class_list_screen.dart
+                      // (Trong hàm _buildClassCard, giả định cls và index có sẵn)
                       Align(
                         alignment: Alignment.bottomRight,
                         child: PopupMenuButton<String>(
@@ -642,8 +659,30 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
                             ),
                             child: const Icon(Icons.more_vert, color: Colors.white, size: 28),
                           ),
-                          onSelected: (value) {
-                            if (value == 'delete') {
+                          // ⭐️ CẬP NHẬT: THÊM 'async' VÀ LOGIC CHỈNH SỬA
+                          onSelected: (value) async {
+                            if (value == 'edit') {
+                              // --- LOGIC CHỈNH SỬA LỚP HỌC (FRONTEND) ---
+                              // 1. Điều hướng đến màn hình chỉnh sửa
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EditClassScreen(
+                                    // Truyền DỮ LIỆU GỐC của lớp học vào màn hình chỉnh sửa
+                                    classData: cls,
+                                  ),
+                                ),
+                              );
+
+                              // 2. Xử lý kết quả trả về sau khi chỉnh sửa
+                              if (result != null && result is Map<String, dynamic>) {
+                                // Bạn cần có hàm này trong _ClassListScreenState
+                                _updateExistingClass(result, index); 
+                              }
+                            } 
+                            
+                            // --- LOGIC XÓA LỚP HỌC (GIỮ NGUYÊN) ---
+                            else if (value == 'delete') {
                               showDialog(
                                 context: context,
                                 builder: (ctx) => AlertDialog(
@@ -671,7 +710,7 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
                                         final String idToDelete = cls['_id'] ?? '';
                                         final String nameToDelete = cls['name'] ?? 'Lớp học';
                                         if (idToDelete.isNotEmpty) {
-                                          _deleteClass(idToDelete, nameToDelete);
+                                          _deleteClass(idToDelete, nameToDelete); // Giữ nguyên hàm của bạn
                                         }
                                         Navigator.pop(ctx);
                                       },
@@ -682,8 +721,29 @@ class _ClassListScreenState extends State<ClassListScreen> with TickerProviderSt
                               );
                             }
                           },
+                          
+                          // ⭐️ CẬP NHẬT: THÊM PopupMenuItem cho "Chỉnh sửa"
                           itemBuilder: (_) => [
-                            const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, color: Colors.red), SizedBox(width: 12), Text("Xóa lớp học")])),
+                            const PopupMenuItem(
+                              value: 'edit', 
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit_outlined, color: Color(0xFF6E48AA)), // Màu tím chủ đạo
+                                  SizedBox(width: 12), 
+                                  Text("Chỉnh sửa lớp học")
+                                ]
+                              )
+                            ),
+                            const PopupMenuItem(
+                              value: 'delete', 
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_outline, color: Colors.red), 
+                                  SizedBox(width: 12), 
+                                  Text("Xóa lớp học")
+                                ]
+                              )
+                            ),
                           ],
                         ),
                       ),
