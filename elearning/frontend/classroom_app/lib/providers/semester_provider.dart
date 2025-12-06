@@ -13,10 +13,23 @@ class Semester {
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'code': code};
   factory Semester.fromJson(Map<String, dynamic> json) {
     // backend may return _id or id
-    final id = json['_id'] ?? json['id'] ?? '';
+    dynamic rawId = json['_id'] ?? json['id'];
+    String idString = '';
+
+    // ⭐️ Xử lý trường hợp MongoDB ObjectID (Map {"$oid": "..."})
+    if (rawId is Map && rawId.containsKey('\$oid')) {
+      idString = rawId['\$oid'].toString();
+    } 
+    // Xử lý trường hợp ID là chuỗi/số đơn giản (API đã convert)
+    else if (rawId != null) {
+      idString = rawId.toString();
+    } else {
+      // Trường hợp không có ID (fallback an toàn)
+      idString = ''; 
+    }
     final name = json['name'] ?? '';
     final code = json['code'];
-    return Semester(id: id.toString(), name: name.toString(), code: code?.toString());
+    return Semester(id: idString.toString(), name: name.toString(), code: code?.toString());
   }
 }
 

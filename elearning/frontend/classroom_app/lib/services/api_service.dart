@@ -23,7 +23,7 @@ class StudentInfo {
 
 class ApiService {
   // Đảm bảo baseUrl đúng cho môi trường của bạn (ví dụ: http://10.0.2.2:3000/api)
-  static const baseUrl = "http://localhost:5000/api"; 
+  static const baseUrl = "https://elearning-app-ecru.vercel.app/api"; 
   static final Map<String, List<Map<String, dynamic>>> _classCache = {};
   // =====================================================================
   // HÀM AUTHENTICATION (Giữ nguyên)
