@@ -25,11 +25,49 @@ class _ClassDetailScreenState extends State<ClassDetailScreen>
   late AnimationController _waveController;
   late Animation<double> _waveAnimation;
   int _selectedIndex = 0;
-  
+  List<Map<String, dynamic>> _assignments = [];
+  bool _isLoadingAssignments = false;
   // ⭐️ Khai báo biến cần thiết (nếu chưa có)
   String? _loggedInInstructorName; 
   String? _loggedInInstructorId; 
   
+  Future<void> _deleteAssignment(String classId, String assignmentId, String assignmentTitle) async {
+    if (!mounted) return;
+    
+    try {
+      // 1. Hiển thị SnackBar thông báo đang xử lý
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đang xóa bài tập "$assignmentTitle"...')),
+      );
+
+      // 2. Gọi API xóa
+      await ApiService.deleteAssignment(
+        classId: classId,
+        assignmentId: assignmentId,
+      );
+      
+      // 3. Xóa thành công, cập nhật UI bằng cách xóa khỏi danh sách local
+      setState(() {
+        _assignments.removeWhere((a) => a['_id'] == assignmentId);
+      });
+
+      // 4. Thông báo thành công
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Bài tập đã được xóa hoàn toàn.')),
+      );
+
+      // Nếu bạn có hàm tải lại danh sách, hãy gọi nó ở đây
+      // await _fetchAssignments(); 
+
+    } catch (e) {
+      // 5. Thông báo lỗi
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Lỗi xóa bài tập: ${e.toString()}')),
+      );
+    }
+  }
   // ⭐️ Hàm định dạng thời gian (CẦN THIẾT)
   String _formatTime(String isoString) {
     try {
@@ -434,19 +472,7 @@ class StreamTab extends StatelessWidget {
 // ====================================================================
 /// LƯU TRỮ COMMENT TẠM THỜI TOÀN CỤC (GLOBAL STATIC IN-MEMORY STORE)
 /// Key: Announcement ID (String)
-class GlobalCommentStore {
-  static final Map<String, List<Map<String, dynamic>>> _comments = {};
 
-  static List<Map<String, dynamic>> getComments(String announcementId) {
-    // Trả về danh sách comments cho ID, nếu không có thì trả về danh sách rỗng
-    return _comments[announcementId] ?? [];
-  }
-
-  static void setComments(String announcementId, List<Map<String, dynamic>> comments) {
-    // Lưu danh sách comments mới
-    _comments[announcementId] = comments;
-  }
-}
 
 class _AnnouncementItem extends StatefulWidget {
   final Map<String, dynamic> announcement;
@@ -485,13 +511,14 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
 
   void _loadComments() {
     final String announcementId = widget.announcement['_id'] ?? 'default_id';
-    final List<Map<String, dynamic>> storedComments = GlobalCommentStore.getComments(announcementId);
-    _localComments = List<Map<String, dynamic>>.from(storedComments);
+    final List<dynamic> comments = widget.announcement['comments'] ?? [];
+    //final List<Map<String, dynamic>> storedComments = GlobalCommentStore.getComments(announcementId);
+    _localComments = List<Map<String, dynamic>>.from(comments);
   }
 
   void _saveComments() {
     final String announcementId = widget.announcement['_id'] ?? 'default_id';
-    GlobalCommentStore.setComments(announcementId, _localComments);
+    //GlobalCommentStore.setComments(announcementId, _localComments);
   }
 
   void _postComment() {
@@ -572,6 +599,9 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
   }
   
   Widget _buildCommentList(bool isDark, Color primaryColor) {
+    if (_localComments.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 8.0, left: 0, right: 0, bottom: 0),
       child: Column(
@@ -598,7 +628,11 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
             itemCount: _localComments.length,
             itemBuilder: (context, index) {
               final comment = _localComments[index];
-              final String author = comment['author'] ?? 'Người dùng';
+              final userName = comment['user']?['name'] as String? ?? 'Ẩn danh'; 
+              final userMssv = comment['user']?['mssv'] as String? ?? '';
+              final author = userMssv.isNotEmpty && userMssv != 'GV' 
+              ? '$userName ($userMssv)' 
+              : userName;
               final DateTime commentTime = DateTime.tryParse(comment['time'] ?? '') ?? DateTime.now();
               
               final duration = DateTime.now().difference(commentTime);
@@ -803,9 +837,8 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
 
   final TextEditingController _contentController = TextEditingController(); 
   
-  List<Map<String, dynamic>> assignments = []; 
+  List<Map<String, dynamic>> _assignments = []; 
   bool isLoadingAssignments = true; 
-  
   // HÀM TẢI DỮ LIỆU TỪ STATIC STORAGE
   Future<void> _loadAssignments() async {
     // 1. Lấy dữ liệu bài tập đã lưu trữ cho classId hiện tại.
@@ -820,7 +853,7 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
       if (_localAssignmentsStorage.containsKey(widget.classId)) {
         if (mounted) {
           setState(() {
-            assignments = _localAssignmentsStorage[widget.classId]!;
+            _assignments = _localAssignmentsStorage[widget.classId]!;
             isLoadingAssignments = false;
           });
         }
@@ -829,18 +862,19 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
       }
       
       // 2. Gọi API
+      // Lưu ý: Bạn cần đảm bảo có hàm fetchAssignments trong ApiService
       final fetchedAssignments = await ApiService.fetchAssignments(widget.classId);
 
       // 3. Cập nhật State và Cache
       if (mounted) {
         setState(() {
-          assignments = fetchedAssignments;
+          _assignments = fetchedAssignments; // Đã sửa từ assignments sang _assignments
           _localAssignmentsStorage[widget.classId] = fetchedAssignments;
         });
       }
     } catch (e) {
       // 4. Xử lý lỗi (Chỉ hiển thị lỗi nếu chưa có dữ liệu trong cache)
-      if (mounted && assignments.isEmpty) {
+      if (mounted && _assignments.isEmpty) { // Đã sửa từ assignments.isEmpty sang _assignments.isEmpty
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("❌ Lỗi tải bài tập: ${e.toString().replaceFirst("Exception: ", "")}"),
@@ -1007,12 +1041,7 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
     } catch (e) {
       // 4. THẤT BẠI: In ra lỗi nếu có exception
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("❌ Lỗi upload: ${e.toString().replaceFirst("Exception: ", "")}"),
-            backgroundColor: Colors.red,
-          ),
-        );
+        
       }
     } finally {
       if (mounted) {
@@ -1024,15 +1053,38 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
   }
 
   // ⭐️ HÀM XỬ LÝ XÓA BÀI TẬP ⭐️
-  void _deleteAssignment(int index) {
-    if (mounted) {
-      setState(() {
-        assignments.removeAt(index);
-        // Cập nhật Static Map
-        _localAssignmentsStorage[widget.classId] = assignments;
-      });
+  Future<void> _deleteAssignment(String assignmentId, String assignmentTitle) async {
+    if (!mounted) return;
+    
+    try {
+      // 1. Hiển thị SnackBar thông báo đang xử lý
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Đã xóa bài tập thành công!"), backgroundColor: Colors.red),
+        SnackBar(content: Text('Đang xóa bài tập "$assignmentTitle"...')),
+      );
+
+      // 2. Gọi API xóa
+      await ApiService.deleteAssignment(
+        classId: widget.classId, // Lấy classId từ widget
+        assignmentId: assignmentId,
+      );
+      
+      // 3. Xóa thành công, cập nhật UI bằng cách xóa khỏi danh sách local
+      setState(() {
+        _assignments.removeWhere((a) => a['_id'] == assignmentId);
+        // Cập nhật Static Map
+        _localAssignmentsStorage[widget.classId] = _assignments; 
+      });
+
+      // 4. Thông báo thành công
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Bài tập đã được xóa hoàn toàn.')),
+      );
+    } catch (e) {
+      // 5. Thông báo lỗi
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Lỗi xóa bài tập: ${e.toString().replaceFirst("Exception: ", "")}')),
       );
     }
   }
@@ -1042,18 +1094,44 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
     if (mounted) {
       setState(() {
         // Cập nhật tiêu đề trong danh sách cục bộ
-        final finalTitle = newTitle.trim().isEmpty ? assignments[index]['fileName'].split('.').first : newTitle;
-        assignments[index]['title'] = finalTitle;
+        final finalTitle = newTitle.trim().isEmpty ? _assignments[index]['fileName'].split('.').first : newTitle;
+        _assignments[index]['title'] = finalTitle;
         
         // Cập nhật Static Map
-        _localAssignmentsStorage[widget.classId] = assignments;
+        _localAssignmentsStorage[widget.classId] = _assignments;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Đã cập nhật bài tập thành: ${assignments[index]['title']}"), backgroundColor: const Color(0xFF6E48AA)),
+        SnackBar(content: Text("Đã cập nhật bài tập thành: ${_assignments[index]['title']}"), backgroundColor: const Color(0xFF6E48AA)),
       );
     }
   }
 
+  void _showDeleteConfirmationDialog(String assignmentId, String title) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Xác nhận xóa Bài tập'),
+          content: Text('Bạn có chắc chắn muốn xóa bài tập "$title" này không? Việc này sẽ xóa **vĩnh viễn** bài tập và file đính kèm khỏi hệ thống.'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Hủy'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+              onPressed: () {
+                Navigator.of(context).pop(); // Đóng dialog
+                _deleteAssignment(assignmentId, title); // Gọi hàm xóa sau khi xác nhận
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
   // HÀM HIỂN THỊ DIALOG CHỈNH SỬA
   void _showEditDialog(Map<String, dynamic> assignment, int index) {
     final editController = TextEditingController(text: assignment['title']);
@@ -1097,7 +1175,7 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
         // Danh sách bài tập
         isLoadingAssignments
             ? const Center(child: CircularProgressIndicator(color: Color(0xFF6E48AA)))
-            : assignments.isEmpty
+            : _assignments.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1112,10 +1190,10 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: assignments.length,
+                    itemCount: _assignments.length,
                     itemBuilder: (context, index) {
-                      final assignment = assignments[index];
-                      final fileName = assignment['fileName'] ?? 'assignment.pdf';
+                      final assignment = _assignments[index];
+                      final fileName = assignment['file']['originalFileName'] ?? 'assignment.pdf';
                       final title = assignment['title'] ?? fileName.split('.').first;
                       final fileExtension = fileName.split('.').last.toLowerCase();
                       
@@ -1151,7 +1229,10 @@ class _AssignmentsTabState extends State<AssignmentsTab> {
                               if (value == 'edit') {
                                 _showEditDialog(assignment, index);
                               } else if (value == 'delete') {
-                                _deleteAssignment(index);
+                                _showDeleteConfirmationDialog(
+                                  assignment['_id'],
+                                  title,
+                                );
                               }
                             },
                             itemBuilder: (context) => [

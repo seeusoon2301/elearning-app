@@ -46,6 +46,7 @@ dependencies:
   image_picker: ^1.2.1
   open_filex: ^4.7.0
   table_calendar: ^3.0.9
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

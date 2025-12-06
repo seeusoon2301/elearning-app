@@ -1,72 +1,79 @@
-// middleware/upload.js
-
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('../config/cloudinary');
 
-// Đảm bảo thư mục lưu trữ tồn tại
-const UPLOAD_DIR = path.join(__dirname, '../uploads/assignments');
-if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
+// =========================================================================
+// CẤU HÌNH UPLOAD ASSIGNMENT (LƯU CỤC BỘ) - GIỮ NGUYÊN
+// =========================================================================
 
-// 1. Cấu hình nơi lưu trữ và tên file
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Chỉ định thư mục lưu trữ file bài tập
-        cb(null, UPLOAD_DIR);
+// const ASSIGNMENT_UPLOAD_DIR = path.join(__dirname, '../uploads/assignments');
+// if (!fs.existsSync(ASSIGNMENT_UPLOAD_DIR)) {
+//     fs.mkdirSync(ASSIGNMENT_UPLOAD_DIR, { recursive: true });
+// }
+
+const assignmentCloudinaryStorage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'elearning_assignments', // Thư mục lưu bài tập trên Cloudinary
+        resource_type: 'raw', // Tự động nhận diện loại resource (raw, image, video,...)
+        public_id: (req, file) => {
+            const fileExtension = path.extname(file.originalname);
+            const fileNameWithoutExt = path.basename(file.originalname, fileExtension);
+            // Tạo ID duy nhất dựa trên tên file và thời gian
+            return `${fileNameWithoutExt.replace(/[^a-z0-9]/gi, '_')}-${Date.now()}${fileExtension}`;
+        },
     },
-    filename: (req, file, cb) => {
-        // Tạo tên file duy nhất: fieldname-timestamp-original_name.ext
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const fileExtension = path.extname(file.originalname);
-        const fileName = file.fieldname + '-' + uniqueSuffix + fileExtension;
-        cb(null, fileName);
-    }
 });
 
-// 2. Cấu hình lọc loại file (ĐÃ CẬP NHẬT)
-const fileFilter = (req, file, cb) => {
-    const mimeType = file.mimetype;
+
+const assignmentUpload = multer({
+    storage: assignmentCloudinaryStorage,
+    limits: { fileSize: 1000 * 1024 * 1024 }, // Giới hạn 10MB
+    // Giữ nguyên file filter nếu cần giới hạn loại file (ví dụ: chỉ PDF, DOCX)
+    // Nếu bạn muốn chấp nhận mọi loại file tài liệu, bạn có thể bỏ qua fileFilter
+    // (tùy vào `assignmentFileFilter` cũ của bạn)
     
-    // ⭐️ LOGGING: Ghi lại MIME Type thực tế nhận được từ client
-    console.log(`[MULTER DEBUG] File MIME Type nhận được: ${mimeType}`);
+});
 
-    // Định nghĩa các biểu thức chính quy cho các nhóm file
-    // Bổ sung 'octet-stream' vào đây, nhưng chỉ khi file có đuôi hợp lệ (đã được kiểm tra ngầm bởi frontend)
-    // Thực tế: Multer không có sẵn extname tại fileFilter, nên chúng ta phải chấp nhận rủi ro hoặc
-    // thêm octet-stream vào danh sách nếu muốn nó qua.
+// ⭐️ NAMED EXPORT cho Assignment
+exports.uploadAssignment = assignmentUpload.single('file');
 
-    // ✅ FIX: Thêm application/octet-stream vào nhóm tài liệu
-    const documentRegex = /application\/(pdf|x-pdf|acrobat|msword|vnd\.openxmlformats-officedocument\.(wordprocessingml|presentationml)\.document|vnd\.ms-powerpoint|vnd\.ms-excel|octet-stream)/i;
-    const sheetRegex = /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|text\/csv/i;
-    const textRegex = /text\/(plain|csv)/i;
-    const imageRegex = /image\/(jpeg|png|gif)/i;
-    const compressedRegex = /application\/(zip|x-zip-compressed)/i;
 
-    // Kiểm tra từng nhóm
-    if (documentRegex.test(mimeType) ||
-        sheetRegex.test(mimeType) ||
-        textRegex.test(mimeType) ||
-        imageRegex.test(mimeType) ||
-        compressedRegex.test(mimeType)
-    ) {
-        cb(null, true); // Chấp nhận file
+// =========================================================================
+// CẤU HÌNH UPLOAD AVATAR (CHUYỂN SANG CLOUDINARY)
+// =========================================================================
+
+// 1. Loại bỏ AVATAR_UPLOAD_DIR, fs.mkdirSync (không cần lưu cục bộ)
+// 2. Định nghĩa storage sử dụng CloudinaryStorage
+const avatarCloudinaryStorage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'elearning_avatars', // Thư mục lưu trên Cloudinary
+        // 🌟 Định dạng file nên dùng dynamic (dựa vào file gốc) hoặc jpg/webp để tối ưu dung lượng.
+        // Tuy nhiên, giữ nguyên 'png' như cấu hình của bạn.
+        format: async (req, file) => 'png', 
+        // Public ID giúp dễ dàng xóa file sau này, cần duy nhất
+        public_id: (req, file) => `avatar-${req.params.studentId}-${Date.now()}`,
+    },
+});
+
+const avatarFileFilter = (req, file, cb) => {
+    const mimeType = file.mimetype;
+    const imageRegex = /image\/(jpeg|png|gif|webp)/i;
+
+    if (imageRegex.test(mimeType)) {
+        cb(null, true);
     } else {
-        // Thông báo lỗi
-        cb(new Error('Chỉ chấp nhận file PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, TXT, CSV, ZIP, và các định dạng ảnh phổ biến (JPG, PNG, GIF).'), false);
+        cb(new Error('Chỉ chấp nhận file ảnh (JPG, PNG, GIF, WebP).'), false);
     }
 };
 
-// 3. Khởi tạo Multer upload middleware
-const uploadAssignmentFile = multer({ 
-    storage: storage,
-    limits: { 
-        fileSize: 1024 * 1024 * 10 // Giới hạn kích thước file 10MB 
-    },
-    fileFilter: fileFilter
-});
-
-// Xuất ra 1 hàm middleware để sử dụng trong route, chỉ chấp nhận 1 file
-// 'file' là tên trường (key) trong form-data mà client sẽ gửi file lên
-module.exports = uploadAssignmentFile.single('file');
+// ⭐️ NAMED EXPORT cho Avatar sử dụng CloudinaryStorage
+exports.uploadAvatar = multer({ 
+    // Thay thế avatarStorage bằng avatarCloudinaryStorage
+    storage: avatarCloudinaryStorage, 
+    limits: { fileSize: 5 * 1024 * 1024 }, 
+    fileFilter: avatarFileFilter,
+}).single('newAvatar');

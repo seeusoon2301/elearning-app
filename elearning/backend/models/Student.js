@@ -26,6 +26,10 @@ const StudentSchema = new mongoose.Schema({
         // Thêm select: false để không bao gồm trường này khi lấy dữ liệu
         select: false 
     },
+    avatar: {
+        type: String, // Lưu đường dẫn tương đối hoặc URL
+        default: ""
+    },
     // 1 student —> nhiều Class
     courses: [
         { type: mongoose.Schema.Types.ObjectId, ref: "Class" }

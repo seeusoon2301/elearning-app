@@ -66,6 +66,7 @@ router.post('/login', async (req, res) => { // ⭐️ CHUYỂN THÀNH ASYNC
                     name: student.name,
                     email: student.email,
                     mssv: student.mssv,
+                    avatar: student.avatar, // ⭐️ Thêm avatar vào phản hồi
                     role: 'student',
                 },
                 token: token,

@@ -6,7 +6,7 @@ import 'role_provider.dart';
 import 'theme_provider.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home.dart';
-
+import './managers/student_info_manager.dart'; // Import StudentInfoManager
 class SignIn extends StatefulWidget {
   const SignIn({super.key});
 
@@ -206,20 +206,40 @@ class _SignInState extends State<SignIn> with TickerProviderStateMixin {
       else {
         final data = await ApiService.login(_emailCtrl.text.trim(), _passCtrl.text);
         final prefs = await SharedPreferences.getInstance();
+
         final userData = data["user"];
         final userRole = data["role"];
+
         if (userData != null && userData["_id"] != null && userRole == 'student') {
-          final studentId = userData["_id"];
-          final studentName = userData["name"] as String?;
-          // 🔑 Lưu ID của người dùng vào key 'userId'
-          await prefs.setString('userId', userData["_id"]); 
-          if (studentName != null) {
-            await prefs.setString('studentName', studentName);
+            final studentId = userData["_id"];
+            final studentIdString = studentId.toString();
+            final studentName = userData["name"] as String?;
+            final studentAvatarPath = userData["avatar"] as String?;
+            final studentEmail = userData["email"] as String?;
+
+            /// ⭐️ LƯU TOÀN BỘ VÀO SharedPreferences
+            await prefs.setString('userId', studentIdString);
+            if (studentName != null) await prefs.setString('studentName', studentName);
+            if (studentEmail != null) await prefs.setString('userEmail', studentEmail);
+
+            if (studentAvatarPath != null && studentAvatarPath.isNotEmpty) {
+              await prefs.setString('studentAvatarUrl', studentAvatarPath);
+            } else {
+              await prefs.remove('studentAvatarUrl');
+            }
+
+            /// ⭐️ Save token
+            if (data['token'] != null) {
+              await prefs.setString("token", data['token']);
+            }
+
+            print("Đã lưu Student vào SharedPreferences");
+
+            /// 🚀 **QUAN TRỌNG:** Gọi loadStudentInfo NGAY SAU KHI LƯU
+            await StudentInfoManager.loadStudentInfo(overrideId: studentIdString);
+            print("DEBUG studentId runtimeType=${studentId.runtimeType}");
+            print("StudentInfoManager: ${StudentInfoManager.studentId}");
         }
-          print("Lưu Student ID thành công: ${studentId}");
-      }
-        await prefs.setString("userEmail", data['user']['email']);
-        if (data['token'] != null) await prefs.setString("token", data['token']);
 
         role = "student";
       }

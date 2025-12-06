@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'providers/semester_provider.dart';
-
+import '../managers/student_info_manager.dart';
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -26,7 +26,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   String studentEmail = "";
   bool isLoading = true;
   String? _studentId;
-
+  String? studentAvatarUrl;
+  String? defaultAvatarBase64;
   // Danh sách màu ngẫu nhiên nhưng đẹp, dùng để tô lớp học
   final List<Color> classColors = [
     const Color(0xFF6E48AA),
@@ -48,6 +49,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Future<void> _loadStudentData() async {
+    if (!mounted) return;
+    await StudentInfoManager.loadStudentInfo();
+    print("Loaded Student Info In HomePage: ID=${StudentInfoManager.studentId}, Name=${StudentInfoManager.studentName}, Email=${StudentInfoManager.studentEmail}, AvatarUrl=${StudentInfoManager.studentAvatarUrl}");
     final prefs = await SharedPreferences.getInstance();
     final id = prefs.getString('studentId');
     final name = prefs.getString('studentName') ?? "Sinh viên";
@@ -82,6 +86,33 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Không tải được lớp học: $e"), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  ImageProvider? _getAvatarImageProvider() { 
+    // 1. Ưu tiên sử dụng URL (đã được xử lý nối Base URL trong _loadAllData)
+    if (studentAvatarUrl != null && studentAvatarUrl!.isNotEmpty) {
+        return NetworkImage(studentAvatarUrl!);
+    } 
+    
+    // 2. Nếu không có URL, kiểm tra chuỗi Base64
+    else if (defaultAvatarBase64 != null && defaultAvatarBase64!.isNotEmpty) {
+        // Cần decode chuỗi Base64 thành Uint8List (sử dụng base64Decode từ dart:convert)
+        try {
+            final bytes = base64Decode(defaultAvatarBase64!);
+            return MemoryImage(bytes);
+        } catch (e) {
+            // Trường hợp chuỗi Base64 không hợp lệ
+            print('Lỗi giải mã Base64: $e');
+            // ❌ Bỏ AssetImage dự phòng - Trả về null
+            return null; 
+        }
+    } 
+    
+    // 3. Không có gì (URL và Base64 đều trống)
+    else {
+        // ❌ Bỏ AssetImage dự phòng - Trả về null
+        return null;
     }
   }
 
@@ -257,10 +288,28 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   }(),
                   builder: (context, snapshot) {
                     final data = snapshot.data ?? {'name': "Học sinh", 'avatar': ''};
-                    final name = data['name']!;
+                    final name = StudentInfoManager.studentName ?? "Học sinh";
                     final avatar64 = data['avatar']!;
                     final hasAvatar = avatar64.isNotEmpty;
+                    final avatarurl = StudentInfoManager.studentAvatarUrl;
+                    ImageProvider? avatarImage;
+                    if (avatarurl != null && avatarurl.isNotEmpty) {
+                        // Trường hợp 1 (Ưu tiên): Có URL từ Manager (Cloudinary)
+                        // ✨ KHÔNG CẦN XỬ LÝ NỐI BASE URL ✨
+                        avatarImage = NetworkImage(avatarurl); 
 
+                    } else if (avatar64.isNotEmpty) {
+                        // Trường hợp 2: Không có URL -> Fallback Base64 (từ snapshot)
+                        try {
+                            avatarImage = MemoryImage(base64Decode(avatar64));
+                        } catch (e) {
+                            print('Lỗi giải mã Base64: $e');
+                            avatarImage = null; // Nếu Base64 lỗi, không dùng ảnh nào
+                        }
+                    } else {
+                        // Trường hợp 3: URL và Base64 đều trống
+                        avatarImage = null;
+                    }
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -270,8 +319,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                           child: CircleAvatar(
                             radius: 22,
                             backgroundColor: const Color(0xFF6E48AA),
-                            backgroundImage: hasAvatar ? MemoryImage(base64Decode(avatar64)) : null,
-                            child: hasAvatar ? null : Text(name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                            backgroundImage: avatarImage,
+                            //child: hasAvatar ? null : Text(name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                           ),
                         ),
                         const SizedBox(height: 4),

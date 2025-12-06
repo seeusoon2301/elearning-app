@@ -14,7 +14,7 @@ exports.getStudentsInClass = async (req, res) => {
         const classData = await Class.findById(classId)
             .populate({
                 path: 'students',
-                select: 'mssv name email', // Chọn các trường bạn muốn trả về
+                select: 'mssv name email avatar', // Chọn các trường bạn muốn trả về
             })
             .select('students name -_id'); // Chỉ cần students, name và loại bỏ _id của Class
 

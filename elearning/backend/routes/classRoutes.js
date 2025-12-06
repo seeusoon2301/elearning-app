@@ -6,8 +6,9 @@ const Semester = require('../models/Semester');
 const { getStudentsInClass } = require('../controllers/classController');
 const { createAnnouncement, getAnnouncementsByClass } = require('../controllers/AnnouncementController');
 
-const uploadAssignmentFile = require('../middleware/upload');
+const { uploadAssignment } = require('../middleware/upload');
 const { createAssignment, getAssignmentsByClass } = require('../controllers/AssignmentController');
+const AssignmentController = require('../controllers/AssignmentController');
 // =========================================================================
 // 1. API TẠO LỚP HỌC (POST /api/admin/classes/create)
 // =========================================================================
@@ -154,10 +155,17 @@ router.get('/:classId/announcements', getAnnouncementsByClass);
 // POST /api/admin/classes/:classId/assignments - Tạo bài tập mới
 router.post(
     '/:classId/assignments', 
-    uploadAssignmentFile, // ⭐️ MIDDLEWARE XỬ LÝ UPLOAD FILE
+    uploadAssignment, // ⭐️ MIDDLEWARE XỬ LÝ UPLOAD FILE
     createAssignment // Controller sẽ chạy SAU khi file đã được upload
 );
 
 // GET /api/admin/classes/:classId/assignments - Lấy danh sách bài tập của một lớp
 router.get('/:classId/assignments', getAssignmentsByClass);
+
+router.delete(
+    '/:classId/assignments/:assignmentId',
+    AssignmentController.deleteAssignment // ✅ Gọi hàm mới
+);
+
+
 module.exports = router;

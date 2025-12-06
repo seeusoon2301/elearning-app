@@ -5,13 +5,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
+import 'dart:typed_data';
 
 class StudentInfo {
   final String id;
   final String email;
   final String name;
+  final String? avatarUrl;
 
-  StudentInfo({required this.id, required this.email, required this.name});
+  StudentInfo({
+    required this.id, 
+    required this.email, 
+    required this.name,
+    this.avatarUrl,
+  });
 }
 
 class ApiService {
@@ -61,13 +68,15 @@ class ApiService {
           final studentId = userData["id"];
           final studentName = userData["name"];
           final studentEmail = userData["email"]; // Lấy email từ response
+          final studentAvatar = userData["avatar"] ?? ""; // Lấy avatar từ response (nếu có)
           
           // ⭐️ LƯU CÁC KEY MÀ home_page.dart ĐANG SỬ DỤNG
           await prefs.setString('studentId', studentId); 
           await prefs.setString('studentName', studentName); 
           await prefs.setString('studentEmail', studentEmail); 
+          await prefs.setString('studentAvatar', studentAvatar);
 
-          print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role, Student ID: $studentId, Name: $studentName, Email: $studentEmail');
+          print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role, Student ID: $studentId, Name: $studentName, Email: $studentEmail, Avatar: $studentAvatar');
       } else if (role == "admin") {
            // Có thể lưu adminId, adminName nếu cần, nhưng hiện tại chỉ cần token và role
            print('✅ ĐĂNG NHẬP THÀNH CÔNG! Role: $role');
@@ -78,6 +87,33 @@ class ApiService {
     } else {
       // Khi server trả về lỗi (401, 400, v.v.)
       throw Exception(data["error"] ?? data["message"] ?? "Lỗi đăng nhập không xác định.");
+    }
+  }
+  static Future<Map<String, dynamic>> getStudentDetails(String studentId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token'); // Lấy token đã lưu
+    
+    if (token == null) {
+      throw Exception("Không tìm thấy token. Vui lòng đăng nhập lại.");
+    }
+
+    // Đường dẫn API đã được định nghĩa trong server.js là /api/admin/students/:id
+    final url = Uri.parse('$baseUrl/admin/students/$studentId');
+    
+    final response = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token', // Gửi token
+      },
+    );
+
+    if (response.statusCode == 200) {
+      // API trả về trực tiếp đối tượng Student
+      return json.decode(response.body) as Map<String, dynamic>;
+    } else {
+      final errorData = json.decode(response.body);
+      throw Exception(errorData['error'] ?? 'Lỗi tải thông tin sinh viên');
     }
   }
 
@@ -486,7 +522,7 @@ class ApiService {
     // Thành công
   }
 
-  // ⭐️ 2. HÀM LẤY DANH SÁCH BẢNG TIN (GET) - ĐÃ FIX LỖI PARSING
+  // ⭐️ 2. HÀM LẤY DANH SÁCH BẢNG TIN (GET) - CÓ TRẢ VỀ LIST COMMENT
   static Future<List<Map<String, dynamic>>> fetchAnnouncementsInClass(String classId) async {
     final url = Uri.parse("$baseUrl/admin/classes/$classId/announcements");
     
@@ -599,49 +635,127 @@ class ApiService {
     }
   }
 
-  static Future<void> updateStudentProfile(String studentId, String newName) async {
-    final url = Uri.parse("$baseUrl/student/$studentId/profile"); 
-    
-    final payload = {
-      "name": newName,
-    };
-    
-    final res = await http.put(
-      url, 
-      headers: await _getHeaders(), // Giả định _getHeaders() đã có
-      body: json.encode(payload),
-    );
+  static Future<Map<String, dynamic>> updateStudentProfile({
+    required String studentId,
+    String? name, 
+    File? newAvatarFile, // ⭐️ Dùng cho Mobile/Desktop
+    Uint8List? newAvatarBytes, // ⭐️ Dùng cho Web
+    String? newAvatarFilename, // ⭐️ Dùng cho Web (cần tên file để xác định mime type)
+  }) async {
+    final url = Uri.parse("$baseUrl/student/$studentId/profile");
+    final request = http.MultipartRequest('PUT', url);
 
-    if (res.statusCode != 200) {
-      final data = jsonDecode(res.body);
-      final errorMessage = data['message'] ?? 'Lỗi không xác định khi cập nhật profile.';
-      throw Exception(errorMessage);
+    // Thêm các trường text (name)
+    if (name != null) {
+      request.fields['name'] = name;
+    }
+
+    // ⭐️ THÊM FILE DỰA TRÊN NỀN TẢNG
+    if (newAvatarFile != null) {
+      // Case 1: Mobile/Desktop (File)
+      final mimeType = lookupMimeType(newAvatarFile.path);
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'newAvatar', 
+          newAvatarFile.path,
+          contentType: MediaType.parse(mimeType ?? 'image/jpeg'),
+        ),
+      );
+    } else if (newAvatarBytes != null && newAvatarFilename != null) {
+      // Case 2: Flutter Web (Uint8List)
+      final mimeType = lookupMimeType(newAvatarFilename);
+      final multipartFile = http.MultipartFile.fromBytes(
+        'newAvatar', // Tên trường file phải khớp với Backend (middleware upload)
+        newAvatarBytes,
+        filename: newAvatarFilename, // Tên file
+        contentType: MediaType.parse(mimeType ?? 'image/png'),
+      );
+      request.files.add(multipartFile);
     }
     
-    // Nếu thành công (200 OK), hàm kết thúc
+    // Nếu không có dữ liệu nào
+    if (request.fields.isEmpty && request.files.isEmpty) {
+      return {'success': false, 'message': 'Không có dữ liệu nào để cập nhật.'};
+    }
+
+    // Gửi request và xử lý response
+    try {
+      final responseStream = await request.send();
+      final response = await http.Response.fromStream(responseStream);
+      
+      final Map<String, dynamic> data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        final studentData = data['data'];
+        final prefs = await SharedPreferences.getInstance();
+        
+        // Cập nhật SharedPreferences
+        if (studentData['name'] != null) {
+          await prefs.setString('studentName', studentData['name']);
+        }
+        
+        // LƯU AVATAR URL CLOUDINARY MỚI
+        if (studentData['avatar'] != null) { 
+          await prefs.setString('studentAvatarUrl', studentData['avatar']);
+        }
+
+        return data; 
+      } else {
+        final errorMessage = data['message'] ?? 'Lỗi không xác định khi cập nhật profile.';
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      print('Lỗi API khi cập nhật profile: $e');
+      return {'success': false, 'message': 'Lỗi kết nối máy chủ.'};
+    }
   }
 
   static Future<String?> getLoggedInStudentId() async {
       final prefs = await SharedPreferences.getInstance();
       // Giả định bạn lưu ID của user vào key 'userId' sau khi login thành công
-      return prefs.getString('userId'); 
+      return prefs.getString('studentId'); 
   }
 
   static Future<StudentInfo?> getStudentInfoFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // Lấy thông tin đã lưu trong hàm login
     final id = prefs.getString('studentId');
-    final name = prefs.getString('studentName');
     final email = prefs.getString('studentEmail');
+    final name = prefs.getString('studentName');
+    final avatarUrl = prefs.getString('studentAvatarUrl'); // ⭐️ LẤY avatarUrl
 
-    if (id != null && name != null && email != null) {
-      // Trả về đối tượng StudentInfo nếu tất cả thông tin đều tồn tại
-      return StudentInfo(id: id, email: email, name: name);
+    if (id != null && email != null && name != null) {
+      return StudentInfo(
+        id: id,
+        email: email,
+        name: name,
+        avatarUrl: avatarUrl, // ⭐️ TRẢ VỀ avatarUrl
+      );
     }
-    
-    // Trả về null nếu thiếu bất kỳ thông tin nào
-    return null; 
+    return null;
+  }
+
+  static Future<void> _saveStudentInfo(
+    String id, 
+    String email, 
+    String name, 
+    String? avatarUrl, // ⭐️ THÊM avatarUrl
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('studentId', id);
+    await prefs.setString('studentEmail', email);
+    await prefs.setString('studentName', name);
+    // Lưu đường dẫn avatar. Có thể là null nếu dùng mặc định.
+    if (avatarUrl != null) {
+      await prefs.setString('studentAvatarUrl', avatarUrl); 
+    } else {
+      await prefs.remove('studentAvatarUrl');
+    }
+}
+
+  static Future<void> updateStudentPrefs(String name, String avatarUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('studentName', name);
+    await prefs.setString('avatarUrl', avatarUrl);
   }
 
   static Future<Map<String, dynamic>> uploadAssignment({
@@ -755,5 +869,74 @@ class ApiService {
     _classCache.clear(); 
     
     print('✅ LOGOUT THÀNH CÔNG! Đã xóa token và cache lớp học.');
+  }
+
+  static Future<Map<String, dynamic>> addCommentToAnnouncement({
+    required String classId,
+    required String announcementId,
+    required String content,
+    required String userId, // Cần userId vì bạn đã bỏ Auth Middleware trên Backend
+  }) async {
+    final url = Uri.parse(
+      "$baseUrl/classes/$classId/announcements/$announcementId/comments" // Sử dụng URL mới đã sửa
+    );
+
+    final payload = {
+      "content": content,
+      "userId": userId, // Truyền userId vào body
+    };
+
+    final response = await http.post(
+      url, 
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode(payload),
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    // Kiểm tra thành công (status code 201 cho POST thành công)
+    final bool isSuccessStatus = response.statusCode == 201;
+
+    if (!isSuccessStatus || data['success'] != true) {
+      final errorMessage = data['message'] ?? 'Lỗi không xác định khi thêm bình luận.';
+      // Xử lý lỗi 400 (thiếu trường, ID không hợp lệ) hoặc 404 (không tìm thấy user/announcement)
+      throw Exception('Lỗi HTTP ${response.statusCode}: $errorMessage');
+    }
+
+    // Trả về dữ liệu bình luận đã thêm
+    return data['data']; 
+  }
+
+  static Future<Map<String, dynamic>> deleteAssignment({
+    required String classId,
+    required String assignmentId,
+  }) async {
+    final url = Uri.parse(
+      "$baseUrl/admin/classes/$classId/assignments/$assignmentId" // URL DELETE mới
+    );
+
+    final response = await http.delete(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        // 'Authorization': 'Bearer $token', // Bỏ comment nếu có dùng Auth token
+      },
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+    // Backend trả về Status 200 cho DELETE thành công
+    final bool isSuccessStatus = response.statusCode == 200; 
+
+    if (!isSuccessStatus || data['success'] != true) {
+      final errorMessage = data['message'] ?? 'Lỗi không xác định khi xóa bài tập.';
+      throw Exception(errorMessage); 
+    }
+
+    // Quan trọng: Xóa cache của lớp học này để buộc tải lại danh sách mới
+    _classCache.remove(classId); 
+    
+    return data;
   }
 }

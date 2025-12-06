@@ -1,5 +1,26 @@
 const mongoose = require('mongoose');
 
+const CommentSchema = new mongoose.Schema({
+    // ID của người bình luận (sinh viên hoặc giảng viên)
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Student', // Giả sử model User chứa cả sinh viên và giảng viên
+        required: [true, 'ID người dùng là bắt buộc.'],
+    },
+    // Nội dung bình luận
+    content: {
+        type: String,
+        required: [true, 'Nội dung bình luận là bắt buộc.'],
+        trim: true,
+        maxlength: 500, // Giới hạn độ dài bình luận
+    },
+    // Thời gian bình luận
+    createdAt: {
+        type: Date,
+        default: Date.now,
+    },
+});
+
 const AnnouncementSchema = new mongoose.Schema({
     // Tham chiếu đến ID của Class mà bảng tin thuộc về (BẮT BUỘC)
     classId: {
@@ -13,6 +34,7 @@ const AnnouncementSchema = new mongoose.Schema({
         trim: true,
         maxlength: 1000,
     },
+    comments: [CommentSchema],
     // Tự động thêm timestamp tạo
 }, { timestamps: true });
 

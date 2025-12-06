@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../student_drawer.dart'; // ĐÃ ĐỔI THÀNH STUDENT DRAWER
 import '../services/api_service.dart';
 import 'package:intl/intl.dart';
-
+import '../managers/student_info_manager.dart';
 class StudentClassDetailScreen extends StatefulWidget {
   final Map<String, dynamic> classData;
 
@@ -29,16 +29,22 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
   List<Map<String, dynamic>> _members = [];
   String? _loggedInStudentId;
   String? _loggedInStudentName; // ⭐️ THÊM TRƯỜNG NÀY
+  String? _loggedInStudentAvatarUrl;
 
   @override
   void initState() {
     super.initState();
     _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _waveAnimation = Tween<double>(begin: 0, end: 1).animate(_waveController);
+    _initializeData();
+    
+  }
 
-    _loadStudentInfo();
-    _loadAnnouncements();
-    _loadMembers();
+  void _initializeData() async {
+      // 1. CHỜ CHO ĐẾN KHI STUDENT ID TẢI XONG
+    await _loadStudentInfo();
+    await _loadAnnouncements();
+    await _loadMembers();      
   }
 
   String _formatTime(String isoString) {
@@ -58,55 +64,100 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
 
   // ⭐️ HÀM MỚI: Tải tên người dùng
   Future<void> _loadStudentInfo() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() {
-        // Giả sử bạn lưu tên sinh viên vào 'studentName' trong SharedPreferences khi login
-        _loggedInStudentName = prefs.getString('studentName') ?? 'Bạn'; 
-      });
-    }
+    setState(() {
+      _loggedInStudentId = StudentInfoManager.studentId;
+      _loggedInStudentName = StudentInfoManager.studentName;
+      _loggedInStudentAvatarUrl = StudentInfoManager.studentAvatarUrl;
+    });
   }
 
   Future<void> _loadAnnouncements() async {
-    final classId = widget.classData['_id']; 
-    if (classId == null) {
-      if(mounted) {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final classId = widget.classData['_id'] as String;
+      // ⭐️ SỬ DỤNG fetchAnnouncementsInClass
+      final fetched = await ApiService.fetchAnnouncementsInClass(classId); 
+      
+      if (mounted) {
         setState(() {
+          _announcements = fetched;
           _isLoading = false;
-          _error = "Không có ID lớp học.";
         });
       }
-      return;
+    } catch (e) {
+      print('Lỗi tải bảng tin: $e');
+      if (mounted) {
+        setState(() {
+          _error = 'Không thể tải bảng tin. Vui lòng thử lại.';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleCommentSubmit(String announcementId, String content) async {
+    // ⭐️ BƯỚC 1: Lấy ID sinh viên từ SharedPreferences (đã được lưu khi login)
+    final prefs = await SharedPreferences.getInstance();
+    // Giả sử key lưu ID là 'studentId' (đã kiểm tra trong api_service.dart)
+    final currentUserId = prefs.getString('studentId'); 
+    
+    if (currentUserId == null || content.trim().isEmpty) {
+        // Thông báo lỗi hoặc bỏ qua nếu không có ID người dùng hoặc nội dung rỗng
+        if(mounted && currentUserId == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Không tìm thấy ID người dùng. Vui lòng đăng nhập lại.')),
+            );
+        }
+        return; 
     }
 
     try {
-      // 2. Gọi API để lấy danh sách thông báo (List<Map<String, dynamic>>)
-      final announcementsMapList = await ApiService.fetchAnnouncementsInClass(classId);
+        final classId = widget.classData['_id'] as String;
+        
+        // ⭐️ BƯỚC 2: GỌI API để thêm bình luận vào database
+        final newComment = await ApiService.addCommentToAnnouncement(
+            classId: classId,
+            announcementId: announcementId,
+            content: content,
+            userId: currentUserId, // ⭐️ Truyền ID sinh viên hiện tại
+        );
 
-      // 3. Chuyển đổi List<Map> thành List<String> (chỉ lấy nội dung thông báo)
-      final announcementsContent = announcementsMapList.map<String>((announcement) {
-        // Giả định backend trả về trường 'content' cho nội dung thông báo
-        return announcement['content'] ?? 'Thông báo không có nội dung.'; 
-      }).toList();
-
-      if (mounted) {
-        setState(() {
-          _announcements = announcementsMapList;
-          _isLoading = false;
-          _error = null;
-        });
-      }
-
+        // ⭐️ BƯỚC 3: Cập nhật UI ngay lập tức với dữ liệu mới từ API
+        if (mounted) {
+            setState(() {
+                // 1. Tìm announcement cần cập nhật
+                final index = _announcements.indexWhere((ann) => ann['_id'] == announcementId);
+                
+                if (index != -1) {
+                    // 2. Lấy danh sách comments hiện tại, đảm bảo không null
+                    // Sử dụng List.from() để tạo bản sao, đảm bảo setState hoạt động
+                    List<dynamic> comments = List<dynamic>.from(_announcements[index]['comments'] ?? []);
+                    
+                    // 3. Thêm comment mới vào danh sách.
+                    // newComment trả về từ API đã có trường 'user' được populate.
+                    comments.add(newComment);
+                    
+                    // 4. Cập nhật lại announcement trong danh sách
+                    _announcements[index]['comments'] = comments;
+                }
+            });
+            // Thông báo thành công (Tùy chọn)
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đã gửi bình luận thành công!')),
+            );
+        }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          // Hiển thị thông báo lỗi chi tiết hơn nếu có
-          _error = "Lỗi tải thông báo: $e"; 
-          //_announcements = ["Lỗi tải thông báo: Vui lòng kiểm tra kết nối."]; 
-        });
-      }
-      print('Error loading announcements: $e');
+        print('Lỗi khi thêm bình luận: $e');
+        if(mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Không thể thêm bình luận: ${e.toString().replaceFirst('Exception: ', '')}')),
+            );
+        }
     }
   }
 
@@ -126,7 +177,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
           _members = students;
           _loggedInStudentId = userId;
           // Dùng chung _isLoading cho cả màn hình chi tiết
-          // _isLoading = false; // Nếu bạn muốn tách loading, hãy thêm biến riêng
+          _isLoading = false; // Nếu bạn muốn tách loading, hãy thêm biến riêng
         });
       }
     } catch (e) {
@@ -280,6 +331,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
                           announcements: _announcements, 
                           formatTime: _formatTime, // <-- Truyền hàm vào đây
                           loggedInStudentName: _loggedInStudentName ?? 'Bạn', // ⭐️ TRUYỀN TÊN
+                          onCommentSubmit: _handleCommentSubmit, // ⭐️ TRUYỀN HÀM XỬ LÝ COMMENT
                         ),
                       _AssignmentsTab(
     classId: widget.classData['_id'],
@@ -289,6 +341,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
           instructorName: widget.classData['instructor'] ?? 'Giảng viên', 
           students: _members,
           loggedInStudentId: _loggedInStudentId,
+          loggedInStudentAvatarUrl: _loggedInStudentAvatarUrl,
           isLoading: _isLoading, // Có thể dùng chung
         ),
                     ][_selectedIndex],
@@ -347,12 +400,13 @@ class _StreamTab extends StatelessWidget {
   final List<Map<String, dynamic>> announcements;
   final String Function(String isoString) formatTime; 
   final String loggedInStudentName; // ⭐️ ĐÃ CÓ: Tên sinh viên đăng nhập
-
+  final Future<void> Function(String announcementId, String content) onCommentSubmit;
   const _StreamTab({
     Key? key, 
     required this.announcements,
     required this.formatTime,
     required this.loggedInStudentName,
+    required this.onCommentSubmit, // ⭐️ Thêm vào constructor
   }) : super(key: key);
 
   @override
@@ -382,40 +436,30 @@ class _StreamTab extends StatelessWidget {
           announcement: announcement,
           formatTime: formatTime,
           loggedInStudentName: loggedInStudentName,
+          onCommentSubmit: onCommentSubmit, // ⭐️ Truyền hàm xử lý comment
         );
       },
     );
   }
 }
 
-// ==================== WIDGET THÔNG BÁO KÈM COMMENT ====================
-/// ⭐️ LƯU TRỮ COMMENT TẠM THỜI TOÀN CỤC (GLOBAL STATIC IN-MEMORY STORE)
-/// Dữ liệu sẽ được giữ lại khi chuyển tab, nhưng mất khi ứng dụng thoát/restart.
-/// Key: Announcement ID (String)
-class GlobalCommentStore {
-  static final Map<String, List<Map<String, dynamic>>> _comments = {};
-
-  static List<Map<String, dynamic>> getComments(String announcementId) {
-    // Trả về danh sách comments cho ID, nếu không có thì trả về danh sách rỗng
-    return _comments[announcementId] ?? [];
-  }
-
-  static void setComments(String announcementId, List<Map<String, dynamic>> comments) {
-    // Lưu danh sách comments mới
-    _comments[announcementId] = comments;
-  }
-}
 
 class _AnnouncementItem extends StatefulWidget {
   final Map<String, dynamic> announcement;
   final String Function(String isoString) formatTime;
   final String loggedInStudentName; 
-
+  final String? loggedInStudentId;
+  final String? loggedInStudentAvatarUrl;
+  final Future<void> Function(String announcementId, String content) onCommentSubmit;
   const _AnnouncementItem({
     Key? key,
     required this.announcement,
     required this.formatTime,
     required this.loggedInStudentName,
+    required this.onCommentSubmit, 
+    // ⭐ THÊM VÀO CONSTRUCTOR
+    this.loggedInStudentId, 
+    this.loggedInStudentAvatarUrl,
   }) : super(key: key);
 
   @override
@@ -423,13 +467,14 @@ class _AnnouncementItem extends StatefulWidget {
 }
 
 class _AnnouncementItemState extends State<_AnnouncementItem> {
-  List<Map<String, dynamic>> _localComments = []; 
+  //List<Map<String, dynamic>> _localComments = []; 
   final TextEditingController _commentController = TextEditingController();
+  bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    _loadComments(); 
+    //_loadComments(); 
   }
 
   @override
@@ -438,42 +483,46 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
     super.dispose();
   }
 
-  // ⭐️ TẢI DỮ LIỆU TỪ GLOBAL MAP
-  void _loadComments() {
-    final String announcementId = widget.announcement['_id'] ?? 'default_id';
-    
-    // Tải dữ liệu từ Global Store
-    final List<Map<String, dynamic>> storedComments = GlobalCommentStore.getComments(announcementId);
-    
-    // Sử dụng List.from() để tạo bản sao, tránh thay đổi trực tiếp Global Store khi gọi setState
-    _localComments = List<Map<String, dynamic>>.from(storedComments);
-  }
-
-  // ⭐️ LƯU DỮ LIỆU VÀO GLOBAL MAP
-  void _saveComments() {
-    final String announcementId = widget.announcement['_id'] ?? 'default_id';
-    // Lưu danh sách hiện tại (_localComments) vào Global Store
-    GlobalCommentStore.setComments(announcementId, _localComments);
-  }
-
   // Cập nhật HÀM XỬ LÝ GỬI COMMENT
-  void _postComment() {
+  void _postComment() async {
     final commentText = _commentController.text.trim();
-    if (commentText.isNotEmpty) {
-      setState(() {
-        _localComments.add({
-          'author': widget.loggedInStudentName,
-          'content': commentText,
-          'time': DateTime.now().toIso8601String(),
+    if (commentText.isEmpty || _isSending) {
+      return;
+    }
+    
+    // 1. Chuẩn bị
+    setState(() {
+      _isSending = true; // Set cờ
+    });
+
+    final announcementId = widget.announcement['_id'] as String;
+    
+    try {
+      // 2. GỌI CALLBACK đã được truyền từ State cha (sẽ gọi API)
+      await widget.onCommentSubmit(announcementId, commentText);
+      
+      // 3. Thành công: Xóa nội dung input
+      if(mounted) {
+        _commentController.clear();
+      }
+
+    } catch (e) {
+      // API đã xử lý thông báo lỗi, không cần làm gì thêm ở đây
+      print('Lỗi trong _postComment: $e'); 
+    } finally {
+      // 4. Hoàn tất (luôn xóa cờ)
+      if(mounted) {
+        setState(() {
+          _isSending = false;
         });
-      });
-      _saveComments(); // ⭐️ LƯU COMMENT MỚI VÀO GLOBAL STORE
-      _commentController.clear();
+      }
     }
   }
   
   // ⭐️ HÀM BUILD WIDGET COMMENT INPUT (UI MỚI)
   Widget _buildCommentInput(bool isDark, Color primaryColor, Color cardColor) {
+    final bool hasAvatar = widget.loggedInStudentAvatarUrl != null && widget.loggedInStudentAvatarUrl!.isNotEmpty;
+
     return Container(
       // Padding nhẹ nhàng hơn, dùng Row crossAxisAlignment.end để căn dưới
       padding: const EdgeInsets.only(left: 16.0, right: 8.0, top: 10.0, bottom: 10.0), 
@@ -488,6 +537,9 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
           CircleAvatar(
             backgroundColor: primaryColor,
             radius: 16, // ⭐️ Giảm kích thước Avatar
+            backgroundImage: hasAvatar 
+              ? NetworkImage(widget.loggedInStudentAvatarUrl!) 
+              : null,
             child: Text(
               widget.loggedInStudentName.isNotEmpty ? widget.loggedInStudentName[0].toUpperCase() : 'B',
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
@@ -500,6 +552,7 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
               keyboardType: TextInputType.multiline,
               maxLines: null, // Cho phép nhiều dòng
               minLines: 1,
+              enabled: !_isSending,
               decoration: InputDecoration(
                 hintText: 'Viết bình luận...',
                 hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600]),
@@ -514,10 +567,19 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
               style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.send_rounded, color: primaryColor, size: 24),
-            onPressed: _postComment,
-          ),
+          _isSending
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: SizedBox(
+                    height: 24, 
+                    width: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: primaryColor),
+                  ),
+                )
+              : IconButton(
+                  icon: Icon(Icons.send_rounded, color: primaryColor, size: 24),
+                  onPressed: _postComment,
+                ),
         ],
       ),
     );
@@ -528,7 +590,11 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
     // Giữ nguyên logic UI comment list từ phiên bản trước
     // ... (Your previous _buildCommentList implementation goes here) ...
     // *Lưu ý: Bạn có thể muốn kiểm tra lại Padding ở đây nếu thấy quá trống.*
-    
+    final List<dynamic> commentsData = widget.announcement['comments'] ?? [];
+    final List<Map<String, dynamic>> localComments = commentsData
+      .where((e) => e is Map<String, dynamic>) // ⭐️ CHỈ GIỮ LẠI CÁC OBJECT
+      .map((e) => e as Map<String, dynamic>)
+      .toList();
     // Dưới đây là đoạn code _buildCommentList từ lần trước, có điều chỉnh nhẹ:
     return Padding(
       padding: const EdgeInsets.only(top: 8.0, left: 0, right: 0, bottom: 0),
@@ -538,7 +604,7 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
           Padding(
             padding: const EdgeInsets.only(left: 32.0, right: 16.0, bottom: 0),
             child: Text(
-              'Bình luận (${_localComments.length})',
+              'Bình luận (${localComments.length})',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: primaryColor,
@@ -552,10 +618,11 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
             shrinkWrap: true,
             padding: EdgeInsets.zero,
             physics: const NeverScrollableScrollPhysics(), 
-            itemCount: _localComments.length,
+            itemCount: localComments.length,
             itemBuilder: (context, index) {
-              final comment = _localComments[index];
-              final String author = comment['author'] ?? 'Người dùng';
+              final comment = localComments[index];
+              final Map<String, dynamic>? user = comment['user'] is Map<String, dynamic> ? comment['user'] as Map<String, dynamic> : null;
+              final String author = user != null ? (user['name'] ?? 'Người dùng') : (comment['author'] ?? 'Người dùng');
               final String content = comment['content'] ?? '';
               
               return Padding(
@@ -624,12 +691,13 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
     final announcement = widget.announcement;
     final content = announcement['content'] ?? 'Thông báo không có nội dung.';
     final createdAt = announcement['createdAt'] as String? ?? '2025-01-01T00:00:00.000Z';
-    
+    final List<dynamic> commentsData = widget.announcement['comments'] ?? [];
+    final bool hasComments = commentsData.isNotEmpty;
     // Tùy chỉnh bo góc cho Card chính
     final cardBorderRadius = BorderRadius.vertical(
       top: const Radius.circular(16), 
       // Nếu có comment, bo góc dưới sẽ là Radius.zero để nối liền với phần comment/input
-      bottom: Radius.zero, 
+      bottom: hasComments ? Radius.zero : const Radius.circular(16), 
     );
 
     return Column(
@@ -638,7 +706,7 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
         Card(
           color: cardColor,
           elevation: 6, 
-          margin: const EdgeInsets.only(bottom: 0), 
+          margin: EdgeInsets.only(bottom: hasComments ? 0 : 16), 
           shape: RoundedRectangleBorder(borderRadius: cardBorderRadius), 
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -700,14 +768,24 @@ class _AnnouncementItemState extends State<_AnnouncementItem> {
         Column(
           children: [
             // DANH SÁCH COMMENTS HIỆN TẠI (chỉ hiển thị nếu có)
-            if (_localComments.isNotEmpty)
-              Container(
-                color: cardColor,
-                child: _buildCommentList(isDark, primaryColor),
-              ),
+            if (hasComments || !_isSending)
+          Column(
+            children: [
+              // DANH SÁCH COMMENTS HIỆN TẠI (chỉ hiển thị nếu có)
+              if (hasComments) // ⭐️ Dùng biến hasComments
+                Container(
+                  color: cardColor,
+                  child: _buildCommentList(isDark, primaryColor),
+                ),
 
-            // INPUT COMMENT
-            _buildCommentInput(isDark, primaryColor, cardColor!),
+              // INPUT COMMENT
+              _buildCommentInput(isDark, primaryColor, cardColor!),
+            ],
+          ),
+        
+        // ⭐️ Khoảng cách giữa các bài đăng chỉ có khi không có comment hoặc khi input đã được đóng
+        if (!hasComments)
+          const SizedBox(height: 16),
           ],
         ),
         
@@ -887,6 +965,7 @@ class _PeopleTab extends StatelessWidget {
   final String instructorName;
   final List<Map<String, dynamic>> students;
   final String? loggedInStudentId;
+  final String? loggedInStudentAvatarUrl;
   final bool isLoading;
 
   const _PeopleTab({
@@ -894,6 +973,7 @@ class _PeopleTab extends StatelessWidget {
     required this.instructorName,
     required this.students,
     this.loggedInStudentId,
+    this.loggedInStudentAvatarUrl,
     this.isLoading = false,
   }) : super(key: key);
 
@@ -914,18 +994,29 @@ class _PeopleTab extends StatelessWidget {
       final studentName = student['name'] ?? 'Sinh viên không tên';
       
       // LOGIC THÊM CHÚ THÍCH (Bạn)
-      final isCurrentUser = studentIdFromApi != null && 
-                            loggedInStudentId != null && // Kiểm tra cả hai đều có giá trị
-                            studentIdFromApi == loggedInStudentId; // So sánh hai chuỗi
-      
+      final isCurrentUser = studentIdFromApi != null && loggedInStudentId != null && studentIdFromApi.trim() == loggedInStudentId!.trim();
+      print('--- DEBUG COMPARISON ---');
+      print('Tên: $studentName');
+      print('ID Student: "${studentIdFromApi?.trim()}"');
+      print('ID Manager: "${loggedInStudentId?.trim()}"');
+      print('isCurrentUser: $isCurrentUser');
+      print('--------------------------');
       final displayName = isCurrentUser 
           ? '$studentName (Bạn)' 
           : studentName;
       
       final firstLetter = studentName.isNotEmpty ? studentName[0].toUpperCase() : '?';
-
+      final finalAvatarUrl = isCurrentUser 
+          ? loggedInStudentAvatarUrl // URL mới nhất từ Manager (Cloudinary URL)
+          : (student['avatar'] as String?);
+      ImageProvider? avatarImage;
+      if (finalAvatarUrl != null && finalAvatarUrl.isNotEmpty) {
+          avatarImage = NetworkImage(finalAvatarUrl);
+      }
+      print('Student Data Keys: ${student.keys}');
+      print('Student Map: $student');
       return ListTile(
-        leading: CircleAvatar(child: Text(firstLetter)),
+        leading: CircleAvatar(backgroundImage: avatarImage,child: avatarImage == null ? Text(firstLetter) : null),
         title: Text(displayName,
             // ⭐️ Thêm kiểu chữ đậm cho người dùng hiện tại (Tùy chọn)
             style: isCurrentUser ? const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue) : null, 

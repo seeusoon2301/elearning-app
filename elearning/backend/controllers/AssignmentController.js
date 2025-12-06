@@ -3,7 +3,7 @@
 const Assignment = require('../models/Assignment'); // Đảm bảo đã import Assignment Model
 const Class = require('../models/Class'); 
 const mongoose = require('mongoose');
-
+const cloudinary = require('../config/cloudinary');
 // =========================================================================
 // HÀM TẠO BÀI TẬP MỚI (POST /api/admin/classes/:classId/assignments)
 // =========================================================================
@@ -27,9 +27,10 @@ exports.createAssignment = async (req, res) => {
         if (req.file) {
             fileData = {
                 originalFileName: req.file.originalname,
-                savedFileName: req.file.filename,
-                // Đường dẫn file lưu trữ công khai
-                fileUrl: `/uploads/assignments/${req.file.filename}` 
+                savedFileName: req.file.filename, // Hoặc req.file.public_id nếu bạn muốn lưu Public ID
+                fileMimeType: req.file.mimetype, // Loại file
+                // ⭐️ LẤY URL CÔNG KHAI TỪ CLOUDINARY
+                fileUrl: req.file.path || req.file.secure_url, 
             };
         } else if (!title || !description || !dueDate) {
              // Nếu không có file, phải có đủ title, description, dueDate
@@ -94,5 +95,38 @@ exports.getAssignmentsByClass = async (req, res) => {
         
     } catch (error) {
         res.status(500).json({ message: error.message || 'Lỗi server khi lấy danh sách bài tập.' });
+    }
+};
+
+exports.deleteAssignment = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+
+        // 1. Tìm và xóa bài tập khỏi database
+        // findByIdAndDelete sẽ trả về đối tượng đã xóa
+        const assignmentToDelete = await Assignment.findByIdAndDelete(assignmentId);
+
+        if (!assignmentToDelete) {
+            return res.status(404).json({ success: false, message: 'Bài tập không tồn tại.' });
+        }
+
+        // 2. Xóa file khỏi Cloudinary nếu có file đính kèm
+        const publicId = assignmentToDelete.file?.savedFileName; 
+        
+        if (publicId) {
+            // Xóa file, chỉ định resource_type: 'raw' vì chúng ta đã upload nó là 'raw'
+            await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+            // Log: console.log(`Đã xóa file Cloudinary: ${publicId}`);
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            message: 'Bài tập và file đính kèm đã được xóa hoàn toàn.',
+            deletedAssignmentId: assignmentId
+        });
+
+    } catch (error) {
+        console.error('Lỗi xóa toàn bộ bài tập:', error);
+        res.status(500).json({ success: false, message: 'Lỗi Server khi xóa bài tập.', error: error.message });
     }
 };

@@ -8,6 +8,8 @@ const authRoutes = require('./routes/authRoutes');
 const semesterRoutes = require('./routes/semesterRoutes');
 const studentRoutes = require('./routes/studentRoutes');
 const studentClassRoutes = require('./routes/studentClassRoutes');
+const announcementCommentRoutes = require('./routes/announcementCommentRoutes');
+
 const cors = require('cors');
 // Tải biến môi trường từ file .env
 dotenv.config();
@@ -29,6 +31,7 @@ app.use('/api/admin/semesters', semesterRoutes);
 app.use('/api/admin/students', studentRoutes);
 //api xem lop cua sinh vien
 app.use('/api/student', studentClassRoutes);
+app.use('/api/classes', announcementCommentRoutes);
 // Khởi động server
 const PORT = process.env.PORT || 5000;
 
